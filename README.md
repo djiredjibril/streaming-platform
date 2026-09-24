@@ -34,3 +34,29 @@ docker-compose.yml <- Postgres, Redis, MinIO en local
 ```bash
 docker compose down
 ```
+
+## Notes d'infra locale
+
+### PostgreSQL (`postgres:16-alpine`)
+- Port `5432`, credentials par défaut `streaming` / `streaming` / DB `streaming` (surchargeables via `.env` : `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`)
+- Donnée persistée dans le volume nommé `postgres_data`
+- Healthcheck : `pg_isready`
+
+### Redis (`redis:7-alpine`)
+- Port `6379`, pas d'auth en local (pas de `requirepass`) — à activer si un jour exposé au-delà de `localhost`
+- Donnée persistée dans le volume nommé `redis_data` (utile pour ne pas perdre les jobs BullMQ entre redémarrages)
+- Healthcheck : `redis-cli ping`
+
+### MinIO (`quay.io/minio/minio:latest`)
+- Port `9000` (API S3) + `9001` (console web), credentials par défaut `minioadmin` / `minioadmin` (surchargeables via `.env` : `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`)
+- Donnée persistée dans le volume nommé `minio_data`
+- Healthcheck : `curl http://localhost:9000/minio/health/live`
+- **Piège rencontré** : l'image `minio/minio` sur Docker Hub renvoie `pull access denied` — MinIO a déplacé la distribution de ses images officielles vers `quay.io/minio/minio`. Le `docker-compose.yml` pointe donc vers `quay.io`, pas Docker Hub.
+
+### Vérifier que tout tourne
+
+```bash
+docker compose exec postgres pg_isready -U streaming
+docker compose exec redis redis-cli ping
+curl -sf http://localhost:9000/minio/health/live && echo OK
+```

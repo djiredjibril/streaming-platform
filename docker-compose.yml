@@ -30,6 +30,8 @@ services:
       retries: 10
 
   minio:
+    # minio/minio on Docker Hub was pulled ("pull access denied") — MinIO now
+    # publishes official images to quay.io only. See README.md "Notes d'infra".
     image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
