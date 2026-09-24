@@ -48,6 +48,7 @@ import {
   type VerifyEmailRequest,
 } from './generated/identity.js';
 import { getClientIp } from './clientIp.js';
+import { getCorrelationId } from './correlationId.js';
 import type { Logger } from '../infra/logger.js';
 
 export interface IdentityServiceDeps {
@@ -114,6 +115,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       call: ServerUnaryCall<RegisterRequest, AuthResponse>,
       callback: sendUnaryData<AuthResponse>,
     ): Promise<void> {
+      const log = deps.logger.child({ correlation_id: getCorrelationId(call) });
       try {
         const { account, emailVerificationToken } = await registerAccount(
           {
@@ -126,7 +128,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
           { accountRepository: deps.accountRepository, rateLimiter: deps.rateLimiter },
         );
 
-        deps.logger.info({ event: 'account_created', accountId: account.id });
+        log.info({ event: 'account_created', accountId: account.id });
         callback(null, noSessionResponse(account, emailVerificationToken));
       } catch (error) {
         callback(toGrpcError(error), null);
@@ -137,11 +139,12 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       call: ServerUnaryCall<VerifyEmailRequest, AuthResponse>,
       callback: sendUnaryData<AuthResponse>,
     ): Promise<void> {
+      const log = deps.logger.child({ correlation_id: getCorrelationId(call) });
       try {
         const account = await verifyEmail(call.request.token, {
           accountRepository: deps.accountRepository,
         });
-        deps.logger.info({ event: 'account_verified', accountId: account.id });
+        log.info({ event: 'account_verified', accountId: account.id });
         callback(null, noSessionResponse(account));
       } catch (error) {
         callback(toGrpcError(error), null);
@@ -152,6 +155,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       call: ServerUnaryCall<LoginRequest, AuthResponse>,
       callback: sendUnaryData<AuthResponse>,
     ): Promise<void> {
+      const log = deps.logger.child({ correlation_id: getCorrelationId(call) });
       try {
         const result = await loginAccount(
           { email: call.request.email, password: call.request.password, ipAddress: getClientIp(call) },
@@ -164,7 +168,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
           },
         );
 
-        deps.logger.info({ event: 'login_success', accountId: result.account.id });
+        log.info({ event: 'login_success', accountId: result.account.id });
         callback(null, {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
@@ -180,6 +184,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       call: ServerUnaryCall<RefreshTokenRequest, AuthResponse>,
       callback: sendUnaryData<AuthResponse>,
     ): Promise<void> {
+      const log = deps.logger.child({ correlation_id: getCorrelationId(call) });
       try {
         const result = await refreshSession(call.request.refreshToken, {
           accountRepository: deps.accountRepository,
@@ -189,7 +194,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
           ipAddress: getClientIp(call),
         });
 
-        deps.logger.info({ event: 'token_refreshed', accountId: result.account.id });
+        log.info({ event: 'token_refreshed', accountId: result.account.id });
         callback(null, {
           accessToken: result.accessToken,
           refreshToken: result.refreshToken,
@@ -198,7 +203,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
         });
       } catch (error) {
         if (error instanceof RefreshTokenReuseDetectedError) {
-          deps.logger.warn({ event: 'refresh_token_reuse_detected' });
+          log.warn({ event: 'refresh_token_reuse_detected' });
         }
         callback(toGrpcError(error), null);
       }
@@ -250,6 +255,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       call: ServerUnaryCall<CreateProfileRequest, ProtoProfile>,
       callback: sendUnaryData<ProtoProfile>,
     ): Promise<void> {
+      const log = deps.logger.child({ correlation_id: getCorrelationId(call) });
       try {
         const profile = await createProfile(
           {
@@ -259,7 +265,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
           },
           { accountRepository: deps.accountRepository, profileRepository: deps.profileRepository },
         );
-        deps.logger.info({ event: 'profile_created', accountId: profile.accountId, profileId: profile.id });
+        log.info({ event: 'profile_created', accountId: profile.accountId, profileId: profile.id });
         callback(null, profileToProto(profile));
       } catch (error) {
         callback(toGrpcError(error), null);
