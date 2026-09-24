@@ -62,6 +62,14 @@ Requête HTTP (ex: POST /auth/login)
 npm run build && node dist/index.js
 ```
 
+## Tester manuellement avec Postman
+
+Une collection couvrant le cycle de session complet vit dans `/postman` :
+
+1. Importer `postman/streaming-platform.postman_collection.json` (Postman : File → Import) et `postman/streaming-platform.postman_environment.json`, sélectionner l'environnement "Streaming Platform — Local"
+2. S'assurer qu'Identity et la Gateway tournent en local (`baseUrl` par défaut : `http://localhost:3000`)
+3. Lancer le dossier "Identity — full session flow" dans l'ordre (Runner ou requête par requête) : `Register` → `Verify email` → `Login` → `Me` → `Refresh` → `Logout`. Chaque requête extrait ce dont la suivante a besoin (`verificationToken`, `accessToken`) via son script de test — le cookie `refresh_token` est géré automatiquement par le cookie jar de Postman, rien à copier à la main
+
 ## Tests
 
 ```bash
