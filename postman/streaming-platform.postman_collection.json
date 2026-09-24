@@ -124,7 +124,54 @@
           ]
         },
         {
-          "name": "5. Refresh",
+          "name": "5. Create profile",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"displayName\": \"Postman\",\n  \"isKidsProfile\": false\n}" },
+            "url": { "raw": "{{baseUrl}}/auth/profiles", "host": ["{{baseUrl}}"], "path": ["auth", "profiles"] },
+            "description": "accountId always comes from the Bearer token, never from the body (IDOR protection — see services/gateway/README.md). The account used in this flow is PERSO, capped at one profile: re-running this request a second time should return 403."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200 (or 403 if a profile already exists on this PERSO account)', () => {",
+                  "  pm.expect([200, 403]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. List profiles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/auth/profiles", "host": ["{{baseUrl}}"], "path": ["auth", "profiles"] },
+            "description": "Lists profiles for the Bearer-token-derived account."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('at least one profile', () => pm.expect(pm.response.json().length).to.be.at.least(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Refresh",
           "request": {
             "method": "POST",
             "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] },
@@ -144,7 +191,7 @@
           ]
         },
         {
-          "name": "6. Logout",
+          "name": "8. Logout",
           "request": {
             "method": "POST",
             "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },

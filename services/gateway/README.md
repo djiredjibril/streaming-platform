@@ -12,8 +12,12 @@ Le contrat REST complet est documenté dans `docs/01-identity.md`, section "Endp
 - `POST /auth/refresh` (lit le cookie) → `RefreshToken` — pose un nouveau cookie ; en cas d'erreur (ex: vol détecté), le cookie est effacé
 - `POST /auth/logout` (lit le cookie) → `Logout` — efface le cookie, `204`
 - `GET /auth/me` (header `Authorization: Bearer <token>`) → `ValidateToken` puis `GetAccount`
+- `POST /auth/profiles` `{displayName, isKidsProfile}` (Bearer requis) → `CreateProfile`
+- `GET /auth/profiles` (Bearer requis) → `ListProfiles`
 
 `login`/`refresh` transmettent aussi l'IP réelle du client en métadonnée gRPC `x-client-ip` (`clientIpMetadata()`) pour que l'`AuditLog` d'Identity reflète le vrai client plutôt que l'adresse de la Gateway.
+
+**`/auth/profiles` n'accepte jamais d'`accountId` du client** — il est dérivé du token via `requireAccountId()` (Bearer → `ValidateToken` → `accountId`), la même logique que `/auth/me`, extraite en helper partagé. Accepter un `accountId` du corps de la requête permettrait à n'importe quel compte authentifié de créer/lister des profils sur le compte de quelqu'un d'autre (IDOR) — voir le test "n'accepte jamais d'accountId du client" dans `tests/integration/authFlow.http.test.ts`.
 
 ## Architecture
 
@@ -39,7 +43,7 @@ Requête HTTP (ex: POST /auth/login)
 |---|---|
 | `src/index.ts` | Point d'entrée process : démarre le serveur HTTP |
 | `src/http/server.ts` | Construit l'instance Fastify (+ plugin `@fastify/cookie`), injecte les dépendances |
-| `src/http/routes/auth.ts` | Toutes les routes `/auth/*` — voir "Implémenté" ci-dessus |
+| `src/http/routes/auth.ts` | Toutes les routes `/auth/*` — voir "Implémenté" ci-dessus. `requireAccountId()` (Bearer → `ValidateToken`) est partagé par `/auth/me` et `/auth/profiles` |
 | `src/http/schemas.ts` | Schémas Zod des corps de requête (validation de forme, pas de règles métier — Identity revalide tout) |
 | `src/grpc/identityClient.ts` | Client gRPC vers `IdentityService` + `callUnary()` (promisification générique réutilisée par toutes les routes) |
 | `src/grpc/generated/identity.ts` | **Généré** par `npm run proto:gen` depuis `/proto/identity.proto` — ne pas éditer à la main |
