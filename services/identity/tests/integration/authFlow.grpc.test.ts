@@ -92,6 +92,24 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     });
   }
 
+  function validateToken(token: string) {
+    return new Promise<{ valid: boolean; accountId: string }>((resolve, reject) => {
+      client.validateToken({ accessToken: token }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
+  function getAccountById(accountId: string) {
+    return new Promise<{ id: string; email: string; status: string }>((resolve, reject) => {
+      client.getAccount({ accountId }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response! as { id: string; email: string; status: string });
+      });
+    });
+  }
+
   const email = 'flow@example.com';
   let emailVerificationToken: string;
 
@@ -197,9 +215,38 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     expect(events.length).toBeGreaterThan(0);
   });
 
-  it('login again to get a fresh session for the logout test', async () => {
+  let currentAccessToken: string;
+  let accountId: string;
+
+  it('login again to get a fresh session', async () => {
     const response = await login({ email, password });
     currentRefreshToken = response.refreshToken;
+    currentAccessToken = response.accessToken;
+    accountId = response.account!.id;
+  });
+
+  it('validateToken accepts a fresh access token', async () => {
+    const response = await validateToken(currentAccessToken);
+
+    expect(response.valid).toBe(true);
+    expect(response.accountId).toBe(accountId);
+  });
+
+  it('validateToken rejects garbage input without a gRPC error', async () => {
+    const response = await validateToken('not-a-real-jwt');
+    expect(response.valid).toBe(false);
+  });
+
+  it('getAccount returns the account by id', async () => {
+    const account = await getAccountById(accountId);
+    expect(account.email).toBe(email);
+    expect(account.status).toBe('ACTIVE');
+  });
+
+  it('getAccount rejects an unknown id with NOT_FOUND', async () => {
+    await expect(getAccountById('00000000-0000-0000-0000-000000000000')).rejects.toMatchObject({
+      code: grpc.status.NOT_FOUND,
+    });
   });
 
   it('logout revokes the refresh token', async () => {
