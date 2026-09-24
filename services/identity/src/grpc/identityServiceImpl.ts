@@ -1,9 +1,20 @@
 import * as grpc from '@grpc/grpc-js';
 import type { ServerUnaryCall, sendUnaryData } from '@grpc/grpc-js';
-import type { AccountRepository } from '../domain/accountRepository.js';
-import { EmailAlreadyRegisteredError, InvalidRegisterInputError } from '../domain/errors.js';
+import type { AccountRecord, AccountRepository } from '../domain/accountRepository.js';
+import {
+  EmailAlreadyRegisteredError,
+  InvalidOrExpiredTokenError,
+  InvalidRegisterInputError,
+} from '../domain/errors.js';
 import { registerAccount } from '../domain/registerAccount.js';
-import { AccountType, type AuthResponse, type RegisterRequest } from './generated/identity.js';
+import { verifyEmail } from '../domain/verifyEmail.js';
+import {
+  AccountType,
+  type Account as ProtoAccount,
+  type AuthResponse,
+  type RegisterRequest,
+  type VerifyEmailRequest,
+} from './generated/identity.js';
 import type { Logger } from '../infra/logger.js';
 
 export interface IdentityServiceDeps {
@@ -25,10 +36,30 @@ const accountTypeToProto: Record<'PERSO' | 'FAMILLE' | 'ETUDIANT', AccountType> 
   ETUDIANT: AccountType.ETUDIANT,
 };
 
+function accountToProto(account: AccountRecord): ProtoAccount {
+  return {
+    id: account.id,
+    email: account.email,
+    accountType: accountTypeToProto[account.accountType],
+    status: account.status,
+  };
+}
+
+/** No active session — see the Register/VerifyEmail comments in /proto/identity.proto. */
+function noSessionResponse(account: AccountRecord, emailVerificationToken?: string): AuthResponse {
+  return {
+    accessToken: '',
+    refreshToken: '',
+    expiresIn: 0,
+    account: accountToProto(account),
+    emailVerificationToken,
+  };
+}
+
 /**
- * Builds the IdentityService gRPC handler map (currently just `register`).
- * Pure adapter: translates proto messages to/from the domain layer and maps
- * domain errors to gRPC status codes — no business logic lives here.
+ * Builds the IdentityService gRPC handler map. Pure adapter: translates
+ * proto messages to/from the domain layer and maps domain errors to gRPC
+ * status codes — no business logic lives here.
  */
 export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
   return {
@@ -37,7 +68,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       callback: sendUnaryData<AuthResponse>,
     ): Promise<void> {
       try {
-        const account = await registerAccount(
+        const { account, emailVerificationToken } = await registerAccount(
           {
             email: call.request.email,
             password: call.request.password,
@@ -48,19 +79,22 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
         );
 
         deps.logger.info({ event: 'account_created', accountId: account.id });
+        callback(null, noSessionResponse(account, emailVerificationToken));
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
 
-        // No active session on registration — see proto comment on Register.
-        callback(null, {
-          accessToken: '',
-          refreshToken: '',
-          expiresIn: 0,
-          account: {
-            id: account.id,
-            email: account.email,
-            accountType: accountTypeToProto[account.accountType],
-            status: account.status,
-          },
+    async verifyEmail(
+      call: ServerUnaryCall<VerifyEmailRequest, AuthResponse>,
+      callback: sendUnaryData<AuthResponse>,
+    ): Promise<void> {
+      try {
+        const account = await verifyEmail(call.request.token, {
+          accountRepository: deps.accountRepository,
         });
+        deps.logger.info({ event: 'account_verified', accountId: account.id });
+        callback(null, noSessionResponse(account));
       } catch (error) {
         callback(toGrpcError(error), null);
       }
@@ -75,6 +109,9 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof EmailAlreadyRegisteredError) {
     return buildServiceError(grpc.status.ALREADY_EXISTS, error.message);
+  }
+  if (error instanceof InvalidOrExpiredTokenError) {
+    return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }

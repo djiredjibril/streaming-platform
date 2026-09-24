@@ -157,6 +157,8 @@ Puisque tu veux approfondir gRPC, voici comment structurer le `.proto`. Les poin
 - **Champs `optional`** en proto3 pour distinguer "valeur absente" de "valeur par défaut" (utile pour `student_verification`)
 - **Codes d'erreur gRPC** (`NOT_FOUND`, `PERMISSION_DENIED`, `UNAUTHENTICATED`) plutôt que de tout faire remonter en `INTERNAL` — c'est ce qui permet aux services appelants de réagir correctement
 
+Contrat réel, tenu à jour dans `/proto/identity.proto` (source de vérité — ce bloc en est une copie pour la lecture, ne pas laisser diverger) :
+
 ```protobuf
 syntax = "proto3";
 package identity.v1;
@@ -164,19 +166,26 @@ package identity.v1;
 service IdentityService {
   // Ne crée jamais de session active : le compte est créé
   // PENDING_VERIFICATION et access_token/refresh_token reviennent vides
-  // jusqu'à ce qu'une étape de vérification (ou Login, une fois implémenté)
-  // active le compte. Le caller doit lire account.status, pas supposer un
-  // token non vide. Implémenté dans services/identity — voir son README.
+  // jusqu'à ce que VerifyEmail active le compte. Le caller doit lire
+  // account.status, pas supposer un token non vide.
   rpc Register(RegisterRequest) returns (AuthResponse);
+
+  // V1 mock uniquement : pas d'infra d'envoi d'email réelle, donc le token
+  // de vérification est renvoyé directement dans
+  // AuthResponse.email_verification_token au lieu d'être emailé.
+  rpc VerifyEmail(VerifyEmailRequest) returns (AuthResponse);
+
   rpc Login(LoginRequest) returns (AuthResponse);
+
+  // Rotation : l'ancien refresh token est révoqué, un nouveau couple est
+  // émis. Présenter un token déjà révoqué = vol détecté → tous les refresh
+  // tokens du compte sont révoqués et UNAUTHENTICATED est renvoyé.
   rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
 
   // Appelé en interne par d'autres services (Delivery, Billing, Social)
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
   rpc GetAccount(GetAccountRequest) returns (Account);
-  rpc CreateProfile(CreateProfileRequest) returns (Profile);
-  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
 }
 
 message RegisterRequest {
@@ -198,6 +207,7 @@ message AuthResponse {
   string refresh_token = 2;
   int64 expires_in = 3;
   Account account = 4;
+  optional string email_verification_token = 5; // set uniquement par Register, cf. commentaire VerifyEmail
 }
 
 message ValidateTokenRequest {
@@ -207,7 +217,6 @@ message ValidateTokenRequest {
 message ValidateTokenResponse {
   bool valid = 1;
   string account_id = 2;
-  repeated string roles = 3;   // rôles du profil actif, pas juste du compte
 }
 
 message Account {
@@ -217,27 +226,15 @@ message Account {
   string status = 4;
 }
 
-message Profile {
-  string id = 1;
-  string account_id = 2;
-  string display_name = 3;
-  bool is_kids_profile = 4;
-}
-
-message CreateProfileRequest {
-  string account_id = 1;
-  string display_name = 2;
-  bool is_kids_profile = 3;
-}
-
+message VerifyEmailRequest { string token = 1; }
 message GetAccountRequest { string account_id = 1; }
-message ListProfilesRequest { string account_id = 1; }
-message ListProfilesResponse { repeated Profile profiles = 1; }
 message LogoutRequest { string refresh_token = 1; }
 message LogoutResponse { bool success = 1; }
 message RefreshTokenRequest { string refresh_token = 1; }
 message LoginRequest { string email = 1; string password = 2; }
 ```
+
+**Pas encore implémenté** : `CreateProfile`/`ListProfiles` (gestion des profils, comptes famille) — sous-feature distincte, pas dans ce lot. `ValidateTokenResponse.roles` (RBAC par profil) suivra une fois `Role`/`ProfileRole` exploités.
 
 **Point d'apprentissage important** : `ValidateToken` sera l'appel gRPC le plus fréquent de tout le système (chaque service appelle Identity avant chaque action protégée). C'est le bon endroit pour découvrir plus tard le **connection pooling** et le **client-side load balancing** de gRPC si tu veux pousser la partie perf.
 
@@ -257,7 +254,8 @@ Le frontend ne parle pas gRPC directement (pas de support natif navigateur sans 
 **Décision de projet** : l'authentification et la gestion de compte sont exposées en **REST**, pas en GraphQL — voir `00-OVERVIEW.md`, "Les trois styles d'API", pour la justification (cookies `httpOnly` pour le refresh token). GraphQL reste réservé aux autres domaines (Catalog, Social, Discovery).
 
 ```
-POST   /auth/register        { email, password, accountType, universityEmail? } -> AuthPayload (tokens vides si pending_verification)
+POST   /auth/register        { email, password, accountType, universityEmail? } -> AuthPayload (tokens vides si pending_verification, + emailVerificationToken mocké, cf. VerifyEmail)
+POST   /auth/verify-email    { token }                                          -> { account } (active le compte)
 POST   /auth/login           { email, password }                                -> AuthPayload
 POST   /auth/refresh         (refresh token en cookie httpOnly)                  -> AuthPayload
 POST   /auth/logout          (refresh token en cookie httpOnly)                  -> 204

@@ -4,11 +4,12 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 
 ## Implémenté
 
-- `Register` : crée un `Account` (+ `StudentVerification` si `ETUDIANT`) avec un mot de passe hashé en argon2id. L'account est créé `PENDING_VERIFICATION` et **aucun token n'est émis** — `access_token`/`refresh_token` reviennent vides tant qu'une étape de vérification (à venir) n'a pas activé le compte. Voir le commentaire sur `rpc Register` dans le `.proto`.
+- `Register` : crée un `Account` (+ `StudentVerification` si `ETUDIANT`) avec un mot de passe hashé en argon2id. L'account est créé `PENDING_VERIFICATION` et **aucun token n'est émis** — `access_token`/`refresh_token` reviennent vides tant que `VerifyEmail` n'a pas activé le compte. La réponse contient aussi `email_verification_token` (V1 mock : pas d'envoi d'email réel, cf. commentaire sur `rpc VerifyEmail` dans le `.proto`).
+- `VerifyEmail` : échange ce token contre l'activation du compte (`status = ACTIVE`). Token à usage unique, expire après 24h.
 
 ## Architecture
 
-Le service suit une architecture hexagonale simple (cf. `services/AGENT.md`, section 3) : `/domain` ne dépend de rien d'externe (ni Prisma, ni gRPC), `/infra` implémente les ports du domaine, `/grpc` est la couche de transport qui traduit proto ↔ domaine.
+Le service suit une architecture hexagonale simple (cf. `services/AGENT.md`, section 3) : `/domain` ne dépend de rien d'externe (ni Prisma, ni gRPC), `/infra` implémente les ports du domaine, `/grpc` est la couche de transport qui traduit proto ↔ domaine. Le diagramme ci-dessous montre le flux de `Register` ; `VerifyEmail` (et les RPCs suivants) suivent le même schéma via leur propre fichier `domain/*.ts`.
 
 ```
 Requête gRPC (Register)
@@ -37,10 +38,12 @@ Requête gRPC (Register)
 | `src/grpc/server.ts` | Construit le `grpc.Server`, injecte les dépendances (repository, logger) |
 | `src/grpc/identityServiceImpl.ts` | Implémentation des handlers `IdentityService` (adaptateur proto ↔ domaine) |
 | `src/grpc/generated/identity.ts` | **Généré** par `npm run proto:gen` depuis `/proto/identity.proto` — ne pas éditer à la main |
-| `src/domain/registerAccount.ts` | Logique métier de `Register` : validation, hash, règles |
+| `src/domain/registerAccount.ts` | Logique métier de `Register` : validation, hash, génération du token de vérification |
+| `src/domain/verifyEmail.ts` | Logique métier de `VerifyEmail` : vérifie le token, active le compte |
+| `src/domain/tokens.ts` | Génération/hash de tokens opaques (refresh, vérification email) + signature/vérification JWT (`jose`) |
 | `src/domain/schemas.ts` | Schémas Zod de validation d'entrée |
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `identityServiceImpl.ts` |
-| `src/domain/accountRepository.ts` | Port (interface) `AccountRepository` — permet de tester `registerAccount` sans DB |
+| `src/domain/accountRepository.ts` | Port (interface) `AccountRepository` — permet de tester la logique métier sans DB |
 | `src/infra/prismaAccountRepository.ts` | Implémentation Prisma du port `AccountRepository` |
 | `src/infra/prismaClient.ts` | Singleton `PrismaClient` du process |
 | `src/infra/logger.ts` | Logger Pino du service (via `@streaming/shared-logging`) |
@@ -71,8 +74,9 @@ npm run build && node dist/index.js
 npm test              # depuis la racine, ou `npx vitest run` ici
 ```
 
-- `tests/unit/registerAccount.test.ts` : logique domaine pure, repository en mémoire (pas de DB)
-- `tests/integration/register.grpc.test.ts` : Testcontainers (vrai PostgreSQL éphémère) + vrai client gRPC — aucune donnée mockée
+- `tests/unit/` : logique `/domain` pure, repository en mémoire partagé (`tests/unit/fakes/inMemoryAccountRepository.ts`) — pas de DB
+- `tests/integration/register.grpc.test.ts` : cas d'erreur de `Register` (email dupliqué, étudiant sans email universitaire)
+- `tests/integration/authFlow.grpc.test.ts` : parcours complet du cycle de compte (register → verify → login → refresh → logout → ...), un seul PostgreSQL Testcontainers partagé, grandit au fil des sous-features — Testcontainers (vrai PostgreSQL éphémère) + vrai client gRPC, aucune donnée mockée
 
 ## Régénérer les stubs gRPC
 

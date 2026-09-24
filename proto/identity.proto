@@ -7,10 +7,37 @@ package identity.v1;
 service IdentityService {
   // Creates an Account. Does NOT issue an active session: new accounts start
   // in `pending_verification` and access_token/refresh_token come back empty
-  // until a follow-up verification feature (or Login, once implemented)
-  // activates the account. Callers must check `account.status`, not assume
-  // a non-empty token.
+  // until VerifyEmail activates the account. Callers must check
+  // `account.status`, not assume a non-empty token.
   rpc Register(RegisterRequest) returns (AuthResponse);
+
+  // V1 mock only: there is no real email-sending infra yet, so the
+  // verification token is returned directly in RegisterResponse's
+  // `email_verification_token` instead of being emailed. Exchanging it here
+  // activates the account (status -> ACTIVE). Replace with a real
+  // email-delivery flow before this ships beyond local dev.
+  rpc VerifyEmail(VerifyEmailRequest) returns (AuthResponse);
+
+  // Issues a JWT access token (short-lived) and an opaque refresh token
+  // (long-lived, stored hashed). Rejects PENDING_VERIFICATION/SUSPENDED
+  // accounts.
+  rpc Login(LoginRequest) returns (AuthResponse);
+
+  // Rotates a refresh token: the presented token is revoked and a new
+  // access/refresh pair is issued. Presenting an already-revoked token is
+  // treated as token theft — ALL of the account's refresh tokens are
+  // revoked and UNAUTHENTICATED is returned.
+  rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
+
+  // Revokes the presented refresh token. Idempotent.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  // Verifies a JWT access token's signature/expiry. Called by every other
+  // service (and the Gateway) before a protected action — this will be the
+  // most frequently called RPC in the whole system.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  rpc GetAccount(GetAccountRequest) returns (Account);
 }
 
 message RegisterRequest {
@@ -29,11 +56,15 @@ enum AccountType {
 }
 
 message AuthResponse {
-  // Empty when the account is not yet active (see Register comment above).
+  // Empty when the account is not yet active (see Register/VerifyEmail
+  // comments above).
   string access_token = 1;
   string refresh_token = 2;
   int64 expires_in = 3;
   Account account = 4;
+  // Set only by Register, on a freshly PENDING_VERIFICATION account. See the
+  // VerifyEmail comment above for why this is here instead of an email.
+  optional string email_verification_token = 5;
 }
 
 message Account {
@@ -41,4 +72,38 @@ message Account {
   string email = 2;
   AccountType account_type = 3;
   string status = 4;
+}
+
+message VerifyEmailRequest {
+  string token = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message ValidateTokenRequest {
+  string access_token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string account_id = 2;
+}
+
+message GetAccountRequest {
+  string account_id = 1;
 }

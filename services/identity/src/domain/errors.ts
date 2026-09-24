@@ -13,3 +13,11 @@ export class EmailAlreadyRegisteredError extends Error {
     this.name = 'EmailAlreadyRegisteredError';
   }
 }
+
+/** Thrown by verifyEmail when the token doesn't match any pending account or has expired. Maps to gRPC INVALID_ARGUMENT — deliberately doesn't distinguish "wrong" from "expired" to avoid leaking account existence. */
+export class InvalidOrExpiredTokenError extends Error {
+  constructor() {
+    super('Invalid or expired token');
+    this.name = 'InvalidOrExpiredTokenError';
+  }
+}

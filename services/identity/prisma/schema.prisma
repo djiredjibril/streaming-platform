@@ -46,6 +46,10 @@ model Account {
   passwordHash String?       @map("password_hash")
   accountType  AccountType   @map("account_type")
   status       AccountStatus @default(PENDING_VERIFICATION)
+  // V1 mock email verification (see /proto/identity.proto, VerifyEmail):
+  // hash of the token returned directly by Register instead of emailed.
+  emailVerificationTokenHash String?   @map("email_verification_token_hash")
+  emailVerificationExpiresAt DateTime? @map("email_verification_expires_at")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 

@@ -2,21 +2,33 @@ import argon2 from 'argon2';
 import type { AccountRepository, AccountRecord } from './accountRepository.js';
 import { EmailAlreadyRegisteredError, InvalidRegisterInputError } from './errors.js';
 import { registerInputSchema, type RegisterInput } from './schemas.js';
+import { generateOpaqueToken } from './tokens.js';
 
 export interface RegisterAccountDeps {
   accountRepository: AccountRepository;
 }
 
+export interface RegisterAccountResult {
+  account: AccountRecord;
+  /**
+   * V1 mock only: normally this would be emailed, never returned to the
+   * caller. See /proto/identity.proto, VerifyEmail, for why it's here.
+   */
+  emailVerificationToken: string;
+}
+
+const EMAIL_VERIFICATION_TTL_SECONDS = 24 * 60 * 60;
+
 /**
  * Registers a new account. Never activates it: every account is created
  * PENDING_VERIFICATION (docs/01-identity.md, "vérification d'email
- * obligatoire avant activation du compte"). Issuing a session is the
- * responsibility of the Login feature, once a verification step exists.
+ * obligatoire avant activation du compte"). Activation happens via
+ * verifyEmail.ts, once the caller exchanges the returned token.
  */
 export async function registerAccount(
   rawInput: unknown,
   deps: RegisterAccountDeps,
-): Promise<AccountRecord> {
+): Promise<RegisterAccountResult> {
   const parsed = registerInputSchema.safeParse(rawInput);
   if (!parsed.success) {
     throw new InvalidRegisterInputError(parsed.error.issues[0]?.message ?? 'Invalid input');
@@ -29,11 +41,17 @@ export async function registerAccount(
   }
 
   const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
+  const verificationToken = generateOpaqueToken();
+  const emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000);
 
-  return deps.accountRepository.create({
+  const account = await deps.accountRepository.create({
     email: input.email,
     passwordHash,
     accountType: input.accountType,
     universityEmail: input.universityEmail,
+    emailVerificationTokenHash: verificationToken.hash,
+    emailVerificationExpiresAt,
   });
+
+  return { account, emailVerificationToken: verificationToken.raw };
 }
