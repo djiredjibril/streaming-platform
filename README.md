@@ -29,6 +29,30 @@ docker-compose.yml <- Postgres, Redis, MinIO en local
    npm run lint
    ```
 
+## Lancer les services (Identity + Gateway)
+
+Une fois l'infra démarrée (`docker compose up -d`) et les dépendances installées :
+
+```bash
+npm run prisma:migrate    # applique les migrations Identity (une seule fois / après un pull avec nouvelle migration)
+
+# Terminal 1
+npm run start:identity    # build + démarre le serveur gRPC Identity sur 0.0.0.0:50051
+
+# Terminal 2
+npm run start:gateway     # build + démarre le serveur HTTP Gateway sur localhost:3000
+```
+
+Vérifier que ça répond :
+
+```bash
+curl -X POST http://localhost:3000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@example.com","password":"correct-horse-battery","accountType":"PERSO"}'
+```
+
+Pour tester le flux complet (register → verify → login → me → refresh → logout) sans taper les requêtes à la main, importer la collection Postman : voir `services/gateway/README.md`, section "Tester manuellement avec Postman".
+
 ## Arrêter l'environnement
 
 ```bash
