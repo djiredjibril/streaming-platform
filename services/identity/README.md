@@ -7,6 +7,8 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 - `Register` : crée un `Account` (+ `StudentVerification` si `ETUDIANT`) avec un mot de passe hashé en argon2id. L'account est créé `PENDING_VERIFICATION` et **aucun token n'est émis** — `access_token`/`refresh_token` reviennent vides tant que `VerifyEmail` n'a pas activé le compte. La réponse contient aussi `email_verification_token` (V1 mock : pas d'envoi d'email réel, cf. commentaire sur `rpc VerifyEmail` dans le `.proto`).
 - `VerifyEmail` : échange ce token contre l'activation du compte (`status = ACTIVE`). Token à usage unique, expire après 24h.
 - `Login` : authentifie par email/mot de passe (argon2). Rejette les comptes `PENDING_VERIFICATION`/`SUSPENDED`. Succès : émet un JWT access token (15 min, HS256) + un refresh token opaque (30 jours, stocké hashé). Chaque tentative (succès/échec) écrit un `AuditLog`.
+- `RefreshToken` : fait tourner (rotate) le refresh token — l'ancien est révoqué, un nouveau couple access+refresh est émis. Présenter un token déjà révoqué est traité comme un vol : tous les refresh tokens du compte sont révoqués et un `AuditLog TOKEN_REVOKED` est écrit avant l'erreur.
+- `Logout` : révoque le refresh token présenté. Idempotent (token inconnu ou déjà révoqué = pas une erreur).
 
 ## Architecture
 
@@ -42,6 +44,8 @@ Requête gRPC (Register)
 | `src/domain/registerAccount.ts` | Logique métier de `Register` : validation, hash, génération du token de vérification |
 | `src/domain/verifyEmail.ts` | Logique métier de `VerifyEmail` : vérifie le token, active le compte |
 | `src/domain/loginAccount.ts` | Logique métier de `Login` : vérification credentials, statut du compte, émission access+refresh token, audit |
+| `src/domain/refreshSession.ts` | Logique métier de `RefreshToken` : rotation, détection de réutilisation (vol) |
+| `src/domain/logoutAccount.ts` | Logique métier de `Logout` : révocation idempotente |
 | `src/domain/tokens.ts` | Génération/hash de tokens opaques (refresh, vérification email) + signature/vérification JWT (`jose`) |
 | `src/domain/schemas.ts` | Schémas Zod de validation d'entrée |
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `identityServiceImpl.ts` |
