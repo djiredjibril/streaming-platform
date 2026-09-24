@@ -4,7 +4,16 @@ import { buildGatewayServer } from '../../src/http/server.js';
 import type { IdentityServiceClient } from '../../src/grpc/generated/identity.js';
 import { logger } from '../../src/infra/logger.js';
 
-type MethodName = 'register' | 'verifyEmail' | 'login' | 'refreshToken' | 'logout' | 'validateToken' | 'getAccount';
+type MethodName =
+  | 'register'
+  | 'verifyEmail'
+  | 'login'
+  | 'refreshToken'
+  | 'logout'
+  | 'validateToken'
+  | 'getAccount'
+  | 'createProfile'
+  | 'listProfiles';
 type MethodResult = { error?: grpc.ServiceError; response?: unknown };
 
 /** Fake IdentityServiceClient covering whichever methods a test needs; every real call is `method(request, metadata, callback)` since routes go through callUnary(). */
@@ -324,5 +333,105 @@ describe('GET /auth/me', () => {
 
     expect(res.statusCode).toBe(401);
     expect(getAccount).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /auth/profiles', () => {
+  it('returns 401 without a bearer token, without calling createProfile', async () => {
+    const createProfile = vi.fn();
+    const identityClient = { createProfile } as unknown as IdentityServiceClient;
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/profiles',
+      payload: { displayName: 'Jane', isKidsProfile: false },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(createProfile).not.toHaveBeenCalled();
+  });
+
+  it('creates a profile for the token-derived account, never trusting an accountId from the body', async () => {
+    const createProfile = vi.fn((request: { accountId: string; displayName: string; isKidsProfile: boolean }) => ({
+      response: { id: 'prof_1', accountId: request.accountId, displayName: request.displayName, isKidsProfile: request.isKidsProfile },
+    }));
+    const identityClient = fakeIdentityClient({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1' } }),
+      createProfile,
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/profiles',
+      headers: { authorization: 'Bearer good-token' },
+      // Deliberately injects a different accountId in the body — must be ignored.
+      payload: { accountId: 'someone-elses-account', displayName: 'Jane', isKidsProfile: false },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ accountId: 'acc_1', displayName: 'Jane' });
+    expect(createProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: 'acc_1' }),
+    );
+  });
+
+  it('maps FAILED_PRECONDITION (profile limit exceeded) to 403', async () => {
+    const identityClient = fakeIdentityClient({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1' } }),
+      createProfile: () => ({ error: serviceError(grpc.status.FAILED_PRECONDITION, 'This account type is limited to one profile') }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/profiles',
+      headers: { authorization: 'Bearer good-token' },
+      payload: { displayName: 'Jane', isKidsProfile: false },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 400 for an empty displayName', async () => {
+    const identityClient = fakeIdentityClient({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1' } }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/profiles',
+      headers: { authorization: 'Bearer good-token' },
+      payload: { displayName: '', isKidsProfile: false },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('GET /auth/profiles', () => {
+  it('returns 401 without a bearer token', async () => {
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, logger });
+
+    const res = await app.inject({ method: 'GET', url: '/auth/profiles' });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns the profiles for the token-derived account', async () => {
+    const identityClient = fakeIdentityClient({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1' } }),
+      listProfiles: () => ({
+        response: { profiles: [{ id: 'prof_1', accountId: 'acc_1', displayName: 'Jane', isKidsProfile: false }] },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'GET', url: '/auth/profiles', headers: { authorization: 'Bearer good-token' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual([{ id: 'prof_1', accountId: 'acc_1', displayName: 'Jane', isKidsProfile: false }]);
   });
 });

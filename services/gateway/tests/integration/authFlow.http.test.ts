@@ -140,6 +140,54 @@ describe('Gateway /auth/* (real Identity gRPC server + real Postgres)', () => {
       expect(invalid.statusCode).toBe(401);
     });
 
+    it('profiles: create rejects a client-supplied accountId, returns the token-derived one', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/profiles',
+        headers: { authorization: `Bearer ${currentAccessToken}` },
+        // Deliberately injects a different accountId — must be ignored (see requireAccountId in auth.ts).
+        payload: { accountId: 'someone-elses-account', displayName: 'Jane', isKidsProfile: false },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ displayName: 'Jane', isKidsProfile: false });
+      expect(res.json().accountId).not.toBe('someone-elses-account');
+    });
+
+    it('profiles: a second profile on this PERSO account is rejected (403)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/profiles',
+        headers: { authorization: `Bearer ${currentAccessToken}` },
+        payload: { displayName: 'Second', isKidsProfile: false },
+      });
+
+      expect(res.statusCode).toBe(403);
+    });
+
+    it('profiles: list returns the profile created above', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/auth/profiles',
+        headers: { authorization: `Bearer ${currentAccessToken}` },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toHaveLength(1);
+    });
+
+    it('profiles: rejects a missing bearer token on both routes', async () => {
+      const post = await app.inject({
+        method: 'POST',
+        url: '/auth/profiles',
+        payload: { displayName: 'Jane', isKidsProfile: false },
+      });
+      expect(post.statusCode).toBe(401);
+
+      const get = await app.inject({ method: 'GET', url: '/auth/profiles' });
+      expect(get.statusCode).toBe(401);
+    });
+
     it('refresh rotates the cookie', async () => {
       const res = await app.inject({
         method: 'POST',
