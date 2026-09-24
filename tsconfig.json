@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "services/identity" },
+    { "path": "services/billing" },
+    { "path": "services/catalog" },
+    { "path": "services/media-pipeline" },
+    { "path": "services/delivery" },
+    { "path": "services/social" },
+    { "path": "services/discovery" },
+    { "path": "services/gateway" },
+    { "path": "packages/shared-types" },
+    { "path": "packages/shared-logging" }
+  ]
+}
