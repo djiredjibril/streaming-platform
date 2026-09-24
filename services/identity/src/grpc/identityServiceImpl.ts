@@ -4,14 +4,19 @@ import type { AccountRecord, AccountRepository } from '../domain/accountReposito
 import type { AuditLogRepository } from '../domain/auditLogRepository.js';
 import type { RefreshTokenRepository } from '../domain/refreshTokenRepository.js';
 import {
+  AccountNotFoundError,
   AccountNotVerifiedError,
   AccountSuspendedError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
   InvalidOrExpiredTokenError,
+  InvalidRefreshTokenError,
   InvalidRegisterInputError,
+  RefreshTokenReuseDetectedError,
 } from '../domain/errors.js';
 import { loginAccount } from '../domain/loginAccount.js';
+import { logoutAccount } from '../domain/logoutAccount.js';
+import { refreshSession } from '../domain/refreshSession.js';
 import { registerAccount } from '../domain/registerAccount.js';
 import { verifyEmail } from '../domain/verifyEmail.js';
 import {
@@ -19,6 +24,9 @@ import {
   type Account as ProtoAccount,
   type AuthResponse,
   type LoginRequest,
+  type LogoutRequest,
+  type LogoutResponse,
+  type RefreshTokenRequest,
   type RegisterRequest,
   type VerifyEmailRequest,
 } from './generated/identity.js';
@@ -137,6 +145,48 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async refreshToken(
+      call: ServerUnaryCall<RefreshTokenRequest, AuthResponse>,
+      callback: sendUnaryData<AuthResponse>,
+    ): Promise<void> {
+      try {
+        const result = await refreshSession(call.request.refreshToken, {
+          accountRepository: deps.accountRepository,
+          refreshTokenRepository: deps.refreshTokenRepository,
+          auditLogRepository: deps.auditLogRepository,
+          jwtSecret: deps.jwtSecret,
+          ipAddress: getClientIp(call),
+        });
+
+        deps.logger.info({ event: 'token_refreshed', accountId: result.account.id });
+        callback(null, {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+          account: accountToProto(result.account),
+        });
+      } catch (error) {
+        if (error instanceof RefreshTokenReuseDetectedError) {
+          deps.logger.warn({ event: 'refresh_token_reuse_detected' });
+        }
+        callback(toGrpcError(error), null);
+      }
+    },
+
+    async logout(
+      call: ServerUnaryCall<LogoutRequest, LogoutResponse>,
+      callback: sendUnaryData<LogoutResponse>,
+    ): Promise<void> {
+      try {
+        await logoutAccount(call.request.refreshToken, {
+          refreshTokenRepository: deps.refreshTokenRepository,
+        });
+        callback(null, { success: true });
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -159,6 +209,12 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof AccountSuspendedError) {
     return buildServiceError(grpc.status.PERMISSION_DENIED, error.message);
+  }
+  if (error instanceof InvalidRefreshTokenError || error instanceof RefreshTokenReuseDetectedError) {
+    return buildServiceError(grpc.status.UNAUTHENTICATED, error.message);
+  }
+  if (error instanceof AccountNotFoundError) {
+    return buildServiceError(grpc.status.NOT_FOUND, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }
