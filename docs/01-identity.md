@@ -250,23 +250,23 @@ message LoginRequest { string email = 1; string password = 2; }
 - Vérification d'email obligatoire avant activation du compte (`status = pending_verification`)
 - Validation de l'email universitaire pour `etudiant` : ne fais pas confiance à une simple regex `@*.edu` — prévoir un flux de vérification asynchrone (upload de justificatif ou service tiers), même mocké en V1
 
-## Endpoints REST/GraphQL exposés au frontend (via une gateway devant les services gRPC)
+## Endpoints exposés au frontend (via une gateway devant les services gRPC)
 
-Le frontend ne parle pas gRPC directement (pas de support natif navigateur sans gRPC-Web). Une **API Gateway** (GraphQL recommandé ici vu ton learning path) traduit les requêtes HTTP du client en appels gRPC internes.
+Le frontend ne parle pas gRPC directement (pas de support natif navigateur sans gRPC-Web). Une **API Gateway** traduit les requêtes du client en appels gRPC internes.
 
-```graphql
-type Mutation {
-  register(input: RegisterInput!): AuthPayload!
-  login(email: String!, password: String!): AuthPayload!
-  logout: Boolean!
-  createProfile(displayName: String!, isKidsProfile: Boolean!): Profile!
-}
+**Décision de projet** : l'authentification et la gestion de compte sont exposées en **REST**, pas en GraphQL — voir `00-OVERVIEW.md`, "Les trois styles d'API", pour la justification (cookies `httpOnly` pour le refresh token). GraphQL reste réservé aux autres domaines (Catalog, Social, Discovery).
 
-type Query {
-  me: Account!
-  myProfiles: [Profile!]!
-}
 ```
+POST   /auth/register        { email, password, accountType, universityEmail? } -> AuthPayload (tokens vides si pending_verification)
+POST   /auth/login           { email, password }                                -> AuthPayload
+POST   /auth/refresh         (refresh token en cookie httpOnly)                  -> AuthPayload
+POST   /auth/logout          (refresh token en cookie httpOnly)                  -> 204
+GET    /auth/me                                                                  -> Account
+GET    /auth/profiles                                                            -> Profile[]
+POST   /auth/profiles        { displayName, isKidsProfile }                      -> Profile
+```
+
+Chaque route REST de la Gateway ne contient aucune logique métier : elle valide la forme de la requête HTTP, appelle le RPC gRPC correspondant sur `IdentityService` (`Register`, `Login`, `RefreshToken`, `Logout`, `GetAccount`, `ListProfiles`, `CreateProfile`), pose/lit les cookies, et retourne le résultat. Le contrat gRPC ci-dessus ne change pas.
 
 ## État d'avancement de ce fichier
 

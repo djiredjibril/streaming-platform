@@ -40,11 +40,12 @@ Le projet utilise **trois** styles d'API, chacun là où il est le plus adapté 
 
 | Style | Usage | Exemples dans les specs |
 |---|---|---|
-| **GraphQL** | Client web ↔ backend, via la gateway. Agrège plusieurs domaines en une requête | `Query.browseTitles`, `Mutation.postComment` |
-| **gRPC** | Communication interne service ↔ service, appels fréquents, typés, performants | `IdentityService.ValidateToken`, `BillingService.IsSubscriptionActive` |
-| **REST/HTTP simple** | Tout ce qui n'est pas un échange de données structuré client-driven : réception de webhooks tiers, delivery de fichiers binaires/manifests | `POST /webhooks/stripe` (02-billing), `GET /delivery/manifest/{content_id}` (05-delivery) |
+| **GraphQL** | Client web ↔ backend, via la gateway, pour tout ce qui n'est pas l'authentification/gestion de compte. Agrège plusieurs domaines en une requête | `Query.browseTitles`, `Mutation.postComment` |
+| **gRPC** | Communication interne service ↔ service, appels fréquents, typés, performants. **Jamais exposé directement au client**, y compris pour l'auth | `IdentityService.ValidateToken`, `BillingService.IsSubscriptionActive`, `IdentityService.Register` |
+| **REST/HTTP** | (1) Authentification/gestion de compte client-facing (2) webhooks tiers (3) delivery de fichiers binaires/manifests | `POST /auth/register` (01-identity), `POST /webhooks/stripe` (02-billing), `GET /delivery/manifest/{content_id}` (05-delivery) |
 
 **Pourquoi ces cas précis sont REST/HTTP et pas GraphQL/gRPC** :
+- **Authentification/gestion de compte** (`register`, `login`, `logout`, `refresh`, `me`, profils) : décision explicite du projet — GraphQL gère mal nativement les cookies `httpOnly` nécessaires au refresh token (cf. `apps/web/AGENT.md` sur la gestion de session), et un endpoint REST classique (`Set-Cookie` dans la réponse) le fait sans détour. La Gateway traduit ces routes REST en appels gRPC internes vers Identity, exactement comme elle le fait pour GraphQL sur les autres domaines — seul le transport client-facing change, pas l'architecture interne
 - Un **webhook** (Stripe qui notifie un paiement) est par nature un appel HTTP POST simple initié par un tiers — Stripe ne parle pas gRPC ni GraphQL, donc ce point d'entrée est forcément un endpoint REST classique
 - Un **manifest HLS ou un segment vidéo** est un fichier binaire/texte servi par URL — un lecteur vidéo HLS fait des `GET` HTTP standards, pas des requêtes GraphQL
 

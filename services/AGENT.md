@@ -15,7 +15,7 @@ Ce document encadre tout agent (humain ou IA) qui implémente le backend de la p
 | Composant | Choix | Justification |
 |---|---|---|
 | Langage | TypeScript (Node.js) | Cohérent avec ton stack existant, typage statique = moins de bugs en équipe/agent |
-| Framework HTTP/GraphQL Gateway | Apollo Server ou GraphQL Yoga | Tu as déjà de l'expérience avec `graphql-yoga` |
+| Framework HTTP/GraphQL Gateway | Fastify (routes REST `/auth/*`) + GraphQL Yoga monté dessus (tout le reste) | Auth/gestion de compte exposée en REST par décision de projet (cf. `00-OVERVIEW.md`, "Les trois styles d'API") — Fastify sert de socle HTTP commun aux deux |
 | gRPC | `@grpc/grpc-js` + `ts-proto` (génère des types TS depuis les `.proto`) | Cohérent avec `grpc-example/` déjà construit |
 | ORM/Query builder | Prisma ou Drizzle | Migrations versionnées, typage des requêtes — évite le SQL à la main sauf cas spécifiques (ex: requêtes de similarité en 07) |
 | Base de données | PostgreSQL | Déjà comparé et maîtrisé dans `dbms-comparison/` |
@@ -38,7 +38,7 @@ Monorepo, un dossier par service, cohérent avec ta méthode de travail existant
     /delivery
     /social
     /discovery
-    /gateway          <- GraphQL gateway, agrège les services pour le frontend
+    /gateway          <- expose REST (/auth/*) + GraphQL (le reste) au frontend, appelle les services en gRPC
   /proto              <- fichiers .proto partagés entre services
   /packages
     /shared-types      <- types TS générés/partagés
