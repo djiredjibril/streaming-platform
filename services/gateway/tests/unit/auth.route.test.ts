@@ -1,18 +1,28 @@
 import * as grpc from '@grpc/grpc-js';
 import { describe, expect, it, vi } from 'vitest';
 import { buildGatewayServer } from '../../src/http/server.js';
-import type { IdentityServiceClient, AuthResponse, RegisterRequest } from '../../src/grpc/generated/identity.js';
+import type { IdentityServiceClient } from '../../src/grpc/generated/identity.js';
 import { logger } from '../../src/infra/logger.js';
 
+type MethodName = 'register' | 'verifyEmail' | 'login' | 'refreshToken' | 'logout' | 'validateToken' | 'getAccount';
+type MethodResult = { error?: grpc.ServiceError; response?: unknown };
+
+/** Fake IdentityServiceClient covering whichever methods a test needs; every real call is `method(request, metadata, callback)` since routes go through callUnary(). */
 function fakeIdentityClient(
-  handler: (request: RegisterRequest) => { error?: grpc.ServiceError; response?: AuthResponse },
+  methods: Partial<Record<MethodName, (request: unknown) => MethodResult>>,
 ): IdentityServiceClient {
-  return {
-    register: (request: RegisterRequest, callback: (error: grpc.ServiceError | null, response?: AuthResponse) => void) => {
+  const client: Record<string, unknown> = {};
+  for (const [name, handler] of Object.entries(methods)) {
+    client[name] = (
+      request: unknown,
+      _metadata: grpc.Metadata,
+      callback: (error: grpc.ServiceError | null, response?: unknown) => void,
+    ) => {
       const { error, response } = handler(request);
       callback(error ?? null, response);
-    },
-  } as unknown as IdentityServiceClient;
+    };
+  }
+  return client as unknown as IdentityServiceClient;
 }
 
 function serviceError(code: grpc.status, message: string): grpc.ServiceError {
@@ -34,14 +44,17 @@ describe('POST /auth/register', () => {
   });
 
   it('returns 200 with the account payload on success', async () => {
-    const identityClient = fakeIdentityClient(() => ({
-      response: {
-        accessToken: '',
-        refreshToken: '',
-        expiresIn: 0,
-        account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'PENDING_VERIFICATION' },
-      },
-    }));
+    const identityClient = fakeIdentityClient({
+      register: () => ({
+        response: {
+          accessToken: '',
+          refreshToken: '',
+          expiresIn: 0,
+          emailVerificationToken: 'a'.repeat(64),
+          account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'PENDING_VERIFICATION' },
+        },
+      }),
+    });
     const app = buildGatewayServer({ identityClient, logger });
 
     const res = await app.inject({
@@ -59,9 +72,9 @@ describe('POST /auth/register', () => {
   });
 
   it('maps ALREADY_EXISTS to 409', async () => {
-    const identityClient = fakeIdentityClient(() => ({
-      error: serviceError(grpc.status.ALREADY_EXISTS, 'An account with this email already exists'),
-    }));
+    const identityClient = fakeIdentityClient({
+      register: () => ({ error: serviceError(grpc.status.ALREADY_EXISTS, 'An account with this email already exists') }),
+    });
     const app = buildGatewayServer({ identityClient, logger });
 
     const res = await app.inject({
@@ -74,9 +87,9 @@ describe('POST /auth/register', () => {
   });
 
   it('maps INVALID_ARGUMENT to 400', async () => {
-    const identityClient = fakeIdentityClient(() => ({
-      error: serviceError(grpc.status.INVALID_ARGUMENT, 'universityEmail is required'),
-    }));
+    const identityClient = fakeIdentityClient({
+      register: () => ({ error: serviceError(grpc.status.INVALID_ARGUMENT, 'universityEmail is required') }),
+    });
     const app = buildGatewayServer({ identityClient, logger });
 
     const res = await app.inject({
@@ -89,9 +102,9 @@ describe('POST /auth/register', () => {
   });
 
   it('maps any other gRPC error to 500 with a generic message', async () => {
-    const identityClient = fakeIdentityClient(() => ({
-      error: serviceError(grpc.status.UNAVAILABLE, 'connection refused'),
-    }));
+    const identityClient = fakeIdentityClient({
+      register: () => ({ error: serviceError(grpc.status.UNAVAILABLE, 'connection refused') }),
+    });
     const app = buildGatewayServer({ identityClient, logger });
 
     const res = await app.inject({
@@ -102,5 +115,214 @@ describe('POST /auth/register', () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.json()).toEqual({ error: 'Internal error' });
+  });
+});
+
+describe('POST /auth/verify-email', () => {
+  it('returns the activated account', async () => {
+    const identityClient = fakeIdentityClient({
+      verifyEmail: () => ({
+        response: {
+          accessToken: '',
+          refreshToken: '',
+          expiresIn: 0,
+          account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' },
+        },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: 'abc' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ account: { status: 'ACTIVE' } });
+  });
+
+  it('maps INVALID_ARGUMENT (unknown/expired token) to 400', async () => {
+    const identityClient = fakeIdentityClient({
+      verifyEmail: () => ({ error: serviceError(grpc.status.INVALID_ARGUMENT, 'Invalid or expired token') }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: 'bad' } });
+
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('POST /auth/login', () => {
+  it('sets an httpOnly refresh token cookie and never puts the refresh token in the JSON body', async () => {
+    const identityClient = fakeIdentityClient({
+      login: () => ({
+        response: {
+          accessToken: 'access-123',
+          refreshToken: 'refresh-456',
+          expiresIn: 900,
+          account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' },
+        },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'jane@example.com', password: 'correct-horse' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      accessToken: 'access-123',
+      expiresIn: 900,
+      account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' },
+    });
+    const cookie = res.cookies.find((c) => c.name === 'refresh_token');
+    expect(cookie).toMatchObject({ value: 'refresh-456', httpOnly: true, path: '/auth' });
+  });
+
+  it('maps UNAUTHENTICATED (wrong credentials) to 401', async () => {
+    const identityClient = fakeIdentityClient({
+      login: () => ({ error: serviceError(grpc.status.UNAUTHENTICATED, 'Invalid email or password') }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'jane@example.com', password: 'wrong' },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('maps FAILED_PRECONDITION (not verified) to 403', async () => {
+    const identityClient = fakeIdentityClient({
+      login: () => ({ error: serviceError(grpc.status.FAILED_PRECONDITION, 'Account is not verified yet') }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'jane@example.com', password: 'correct-horse' },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('POST /auth/refresh', () => {
+  it('returns 401 when there is no refresh token cookie', async () => {
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, logger });
+
+    const res = await app.inject({ method: 'POST', url: '/auth/refresh' });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rotates the cookie on success', async () => {
+    const identityClient = fakeIdentityClient({
+      refreshToken: () => ({
+        response: {
+          accessToken: 'new-access',
+          refreshToken: 'new-refresh',
+          expiresIn: 900,
+          account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' },
+        },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      cookies: { refresh_token: 'old-refresh' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const cookie = res.cookies.find((c) => c.name === 'refresh_token');
+    expect(cookie?.value).toBe('new-refresh');
+  });
+
+  it('clears the cookie and maps UNAUTHENTICATED to 401 on reuse of a revoked token', async () => {
+    const identityClient = fakeIdentityClient({
+      refreshToken: () => ({
+        error: serviceError(grpc.status.UNAUTHENTICATED, 'Refresh token reuse detected'),
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      cookies: { refresh_token: 'stolen-token' },
+    });
+
+    expect(res.statusCode).toBe(401);
+    const cookie = res.cookies.find((c) => c.name === 'refresh_token');
+    expect(cookie?.value).toBe('');
+  });
+});
+
+describe('POST /auth/logout', () => {
+  it('clears the cookie and returns 204 when a token was present', async () => {
+    const logout = vi.fn(() => ({ response: { success: true } }));
+    const identityClient = fakeIdentityClient({ logout });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'POST', url: '/auth/logout', cookies: { refresh_token: 'abc' } });
+
+    expect(res.statusCode).toBe(204);
+    expect(logout).toHaveBeenCalledOnce();
+  });
+
+  it('returns 204 without calling Identity when there is no cookie', async () => {
+    const logout = vi.fn();
+    const identityClient = { logout } as unknown as IdentityServiceClient;
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'POST', url: '/auth/logout' });
+
+    expect(res.statusCode).toBe(204);
+    expect(logout).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /auth/me', () => {
+  it('returns 401 without a bearer token', async () => {
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, logger });
+
+    const res = await app.inject({ method: 'GET', url: '/auth/me' });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns the account for a valid token', async () => {
+    const identityClient = fakeIdentityClient({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1' } }),
+      getAccount: () => ({
+        response: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: 'Bearer good-token' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ id: 'acc_1', email: 'jane@example.com' });
+  });
+
+  it('returns 401 for an invalid token without calling getAccount', async () => {
+    const getAccount = vi.fn();
+    const identityClient = fakeIdentityClient({
+      validateToken: () => ({ response: { valid: false, accountId: '' } }),
+      getAccount,
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: 'Bearer bad-token' } });
+
+    expect(res.statusCode).toBe(401);
+    expect(getAccount).not.toHaveBeenCalled();
   });
 });
