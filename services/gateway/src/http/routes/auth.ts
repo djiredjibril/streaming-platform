@@ -39,10 +39,21 @@ const REFRESH_TOKEN_COOKIE = 'refresh_token';
 // here since the Gateway has no dependency on Identity's domain layer at runtime.
 const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
-/** Metadata carrying the real client IP, for Identity's AuditLog (login/refresh) and rate limiter (login/register) — see grpc/clientIp.ts on the Identity side. */
-function clientIpMetadata(ip: string): grpc.Metadata {
+/**
+ * Metadata attached to every gRPC call to Identity. Always carries
+ * `x-correlation-id` (= `request.id`, itself the incoming `x-correlation-id`
+ * HTTP header or a fresh UUID — see `genReqId` in http/server.ts) so every
+ * Identity log line triggered by this request can be tied back to it
+ * (services/AGENT.md §5). `x-client-ip` is only set when requested — it
+ * feeds Identity's AuditLog and rate limiter (see grpc/clientIp.ts on the
+ * Identity side), which only login/register/refresh care about.
+ */
+function requestMetadata(request: FastifyRequest, opts?: { includeClientIp?: boolean }): grpc.Metadata {
   const metadata = new grpc.Metadata();
-  metadata.set('x-client-ip', ip);
+  metadata.set('x-correlation-id', request.id);
+  if (opts?.includeClientIp) {
+    metadata.set('x-client-ip', request.ip);
+  }
   return metadata;
 }
 
@@ -101,9 +112,11 @@ async function requireAccountId(
     return null;
   }
 
-  const validation = await callUnary<ValidateTokenRequest, ValidateTokenResponse>(client.validateToken.bind(client), {
-    accessToken,
-  });
+  const validation = await callUnary<ValidateTokenRequest, ValidateTokenResponse>(
+    client.validateToken.bind(client),
+    { accessToken },
+    requestMetadata(request),
+  );
   if (!validation.valid) {
     reply.code(401).send({ error: 'Invalid or expired access token' });
     return null;
@@ -131,7 +144,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
           accountType: accountTypeToProto[body.accountType],
           universityEmail: body.universityEmail,
         },
-        clientIpMetadata(request.ip),
+        requestMetadata(request, { includeClientIp: true }),
       );
 
       // No cookie: Register never returns an active session (tokens are empty).
@@ -155,9 +168,11 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     }
 
     try {
-      const response = await callUnary<VerifyEmailRequest, AuthResponse>(client.verifyEmail.bind(client), {
-        token: parsed.data.token,
-      });
+      const response = await callUnary<VerifyEmailRequest, AuthResponse>(
+        client.verifyEmail.bind(client),
+        { token: parsed.data.token },
+        requestMetadata(request),
+      );
       return reply.code(200).send({ account: response.account });
     } catch (error) {
       const { status, body } = mapGrpcError(error, deps.logger, 'verify_email_proxy_failed');
@@ -175,7 +190,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
       const response = await callUnary<LoginRequest, AuthResponse>(
         client.login.bind(client),
         parsed.data,
-        clientIpMetadata(request.ip),
+        requestMetadata(request, { includeClientIp: true }),
       );
       setRefreshTokenCookie(reply, response.refreshToken);
       // refreshToken deliberately not in the JSON body — it lives only in the httpOnly cookie (apps/web/AGENT.md).
@@ -200,7 +215,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
       const response = await callUnary<RefreshTokenRequest, AuthResponse>(
         client.refreshToken.bind(client),
         { refreshToken: token },
-        clientIpMetadata(request.ip),
+        requestMetadata(request, { includeClientIp: true }),
       );
       setRefreshTokenCookie(reply, response.refreshToken);
       return reply.code(200).send({
@@ -224,7 +239,11 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     }
 
     try {
-      await callUnary<LogoutRequest, LogoutResponse>(client.logout.bind(client), { refreshToken: token });
+      await callUnary<LogoutRequest, LogoutResponse>(
+        client.logout.bind(client),
+        { refreshToken: token },
+        requestMetadata(request),
+      );
       return reply.code(204).send();
     } catch (error) {
       const { status, body } = mapGrpcError(error, deps.logger, 'logout_proxy_failed');
@@ -237,7 +256,11 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     if (!accountId) return;
 
     try {
-      const account = await callUnary<GetAccountRequest, Account>(client.getAccount.bind(client), { accountId });
+      const account = await callUnary<GetAccountRequest, Account>(
+        client.getAccount.bind(client),
+        { accountId },
+        requestMetadata(request),
+      );
       return reply.code(200).send(account);
     } catch (error) {
       const { status, body } = mapGrpcError(error, deps.logger, 'me_proxy_failed');
@@ -255,11 +278,15 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     }
 
     try {
-      const profile = await callUnary<CreateProfileRequest, Profile>(client.createProfile.bind(client), {
-        accountId,
-        displayName: parsed.data.displayName,
-        isKidsProfile: parsed.data.isKidsProfile,
-      });
+      const profile = await callUnary<CreateProfileRequest, Profile>(
+        client.createProfile.bind(client),
+        {
+          accountId,
+          displayName: parsed.data.displayName,
+          isKidsProfile: parsed.data.isKidsProfile,
+        },
+        requestMetadata(request),
+      );
       return reply.code(200).send(profile);
     } catch (error) {
       const { status, body } = mapGrpcError(error, deps.logger, 'create_profile_proxy_failed');
@@ -272,9 +299,11 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     if (!accountId) return;
 
     try {
-      const response = await callUnary<ListProfilesRequest, ListProfilesResponse>(client.listProfiles.bind(client), {
-        accountId,
-      });
+      const response = await callUnary<ListProfilesRequest, ListProfilesResponse>(
+        client.listProfiles.bind(client),
+        { accountId },
+        requestMetadata(request),
+      );
       return reply.code(200).send(response.profiles);
     } catch (error) {
       const { status, body } = mapGrpcError(error, deps.logger, 'list_profiles_proxy_failed');
