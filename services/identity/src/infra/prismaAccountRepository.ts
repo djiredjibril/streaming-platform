@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import type {
+  AccountCredentials,
   AccountRecord,
   AccountRepository,
   CreateAccountInput,
@@ -18,6 +19,11 @@ export class PrismaAccountRepository implements AccountRepository {
   async findById(accountId: string): Promise<AccountRecord | null> {
     const account = await this.prisma.account.findUnique({ where: { id: accountId } });
     return account ? toAccountRecord(account) : null;
+  }
+
+  async findCredentialsByEmail(email: string): Promise<AccountCredentials | null> {
+    const account = await this.prisma.account.findUnique({ where: { email } });
+    return account ? { ...toAccountRecord(account), passwordHash: account.passwordHash } : null;
   }
 
   /** Creates the Account row and, when `universityEmail` is set, a linked StudentVerification row in PENDING status (see docs/01-identity.md). */
