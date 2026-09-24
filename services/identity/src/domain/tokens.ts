@@ -21,6 +21,7 @@ export function generateOpaqueToken(): OpaqueToken {
   return { raw, hash: hashOpaqueToken(raw) };
 }
 
+/** SHA-256 of a raw opaque token — what's actually persisted (see generateOpaqueToken's docstring for why SHA-256). Exported so verifyEmail.ts/logoutAccount.ts/refreshSession.ts can hash a caller-presented token to look it up without re-deriving the raw value. */
 export function hashOpaqueToken(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
