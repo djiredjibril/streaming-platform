@@ -16,6 +16,8 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 
 **Rate limiting** (protection brute-force, `01-identity.md` §"Bonnes pratiques sécurité") : `Login` (5 tentatives / 15 min) et `Register` (5 / heure), tous deux par IP client (pas par email, pour ne pas permettre à un attaquant de verrouiller le compte d'une victime). Fenêtre fixe via Redis (`INCR`+`EXPIRE`) — dépassement → `RateLimitExceededError` → gRPC `RESOURCE_EXHAUSTED`. Voir `src/domain/loginAccount.ts`/`registerAccount.ts` pour le détail des constantes, `src/infra/redisRateLimiter.ts` pour la limite connue (imprécision aux bornes de fenêtre, acceptée et documentée, pas un bug caché).
 
+**Correlation ID** (`services/AGENT.md` §5) : chaque handler qui log un événement métier construit un logger enfant Pino avec `correlation_id` (`src/grpc/correlationId.ts`, lit la métadonnée `x-correlation-id` posée par la Gateway, sinon génère un UUID) — permet de relier dans les logs une requête HTTP entrante côté Gateway à tout ce qu'elle déclenche côté Identity.
+
 ## Architecture
 
 Le service suit une architecture hexagonale simple (cf. `services/AGENT.md`, section 3) : `/domain` ne dépend de rien d'externe (ni Prisma, ni gRPC), `/infra` implémente les ports du domaine, `/grpc` est la couche de transport qui traduit proto ↔ domaine. Le diagramme ci-dessous montre le flux de `Register` ; `VerifyEmail` (et les RPCs suivants) suivent le même schéma via leur propre fichier `domain/*.ts`.
@@ -65,6 +67,7 @@ Requête gRPC (Register)
 | `src/domain/profileRepository.ts` | Port (interface) `ProfileRepository` |
 | `src/domain/rateLimiter.ts` | Port (interface) `RateLimiter` — compteur à fenêtre fixe, `consume(key, limit, windowSeconds)` |
 | `src/grpc/clientIp.ts` | Extrait l'IP client (métadonnée `x-client-ip` posée par la Gateway, sinon `call.getPeer()`) pour l'audit et le rate limiting |
+| `src/grpc/correlationId.ts` | Extrait le correlation_id (métadonnée `x-correlation-id` posée par la Gateway, sinon génère un UUID) pour le traçage cross-service dans les logs |
 | `src/infra/prismaAccountRepository.ts` | Implémentation Prisma du port `AccountRepository` |
 | `src/infra/prismaRefreshTokenRepository.ts` | Implémentation Prisma du port `RefreshTokenRepository` |
 | `src/infra/prismaAuditLogRepository.ts` | Implémentation Prisma du port `AuditLogRepository` |
@@ -104,7 +107,7 @@ npm test              # depuis la racine, ou `npx vitest run` ici
 
 - `tests/unit/` : logique `/domain` pure, repositories en mémoire partagés (`tests/unit/fakes/`) — pas de DB
 - `tests/integration/register.grpc.test.ts` : cas d'erreur de `Register` (email dupliqué, étudiant sans email universitaire)
-- `tests/integration/authFlow.grpc.test.ts` : parcours complet du cycle de compte (register → verify → login → refresh → logout → ...), un seul PostgreSQL + Redis Testcontainers partagés, grandit au fil des sous-features — vrai PostgreSQL/Redis éphémères + vrai client gRPC, aucune donnée mockée. Le bloc `rate limiting` utilise la métadonnée `x-client-ip` avec une IP factice par test pour isoler son budget de celui des autres tests du fichier (une deuxième instance de client gRPC ne suffit pas : `@grpc/grpc-js` réutilise la même connexion sous-jacente pour une même cible)
+- `tests/integration/authFlow.grpc.test.ts` : parcours complet du cycle de compte (register → verify → login → refresh → logout → ...), un seul PostgreSQL + Redis Testcontainers partagés, grandit au fil des sous-features — vrai PostgreSQL/Redis éphémères + vrai client gRPC, aucune donnée mockée. Le bloc `rate limiting` utilise la métadonnée `x-client-ip` avec une IP factice par test pour isoler son budget de celui des autres tests du fichier (une deuxième instance de client gRPC ne suffit pas : `@grpc/grpc-js` réutilise la même connexion sous-jacente pour une même cible). Le bloc `correlation_id logging` construit son propre serveur avec un logger Pino qui écrit en mémoire (`MemoryLogStream`) pour vérifier qu'une vraie ligne de log émise contient bien le `correlation_id` attendu, pas juste que le code lit la bonne métadonnée
 
 ## Régénérer les stubs gRPC
 

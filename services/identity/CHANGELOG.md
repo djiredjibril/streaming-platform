@@ -10,3 +10,4 @@
 - feat: `ValidateToken`/`GetAccount` endpoints (gRPC) — vérification JWT et lookup de compte, prêts à être appelés par les autres domaines (Billing, Delivery, Social) et par la Gateway
 - feat: `CreateProfile`/`ListProfiles` endpoints (gRPC) — active les tables `Profile`/`Role`/`ProfileRole` du schéma initial, jusqu'ici inexploitées ; limite d'un profil pour `PERSO`/`ETUDIANT`, rôle `OWNER` automatique sur le premier profil
 - feat: rate limiting sur `Login`/`Register` (Redis, fenêtre fixe, par IP) — protection brute-force notée dès la spec Phase 1, fermée après trois reports ; nouvelle variable d'env `REDIS_URL` (fail-fast)
+- feat: propagation du `correlation_id` (métadonnée gRPC `x-correlation-id`, sinon UUID généré) — chaque handler avec un log métier utilise un logger enfant Pino dédié ; dernier item du gap de traçabilité noté dès `Register`

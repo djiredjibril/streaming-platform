@@ -24,7 +24,7 @@ sequenceDiagram
 
     Browser->>Gateway: POST /auth/login {email, password}
     Note over Gateway: http/routes/auth.ts<br/>loginBodySchema.safeParse (Zod)
-    Gateway->>Identity: gRPC Login(LoginRequest)<br/>metadata: x-client-ip
+    Gateway->>Identity: gRPC Login(LoginRequest)<br/>metadata: x-client-ip, x-correlation-id
     Note over Identity: grpc/identityServiceImpl.ts<br/>traduit proto -> domaine
     Identity->>DB: findCredentialsByEmail, create RefreshToken, record AuditLog
     DB-->>Identity: 
@@ -37,9 +37,9 @@ sequenceDiagram
 **Fichiers exacts, dans l'ordre où la requête les traverse** :
 
 1. `services/gateway/src/http/routes/auth.ts` — `fastify.post('/auth/login', ...)` : valide le corps avec `loginBodySchema` (Zod), *forme seulement*, pas de règle métier
-2. `services/gateway/src/grpc/identityClient.ts` — `callUnary()` : promisifie l'appel gRPC, attache la métadonnée `x-client-ip` (IP réelle du navigateur, pas celle de la Gateway — voir `clientIpMetadata()`)
+2. `services/gateway/src/http/routes/auth.ts` — `requestMetadata()` : attache `x-client-ip` (IP réelle du navigateur, pas celle de la Gateway) et `x-correlation-id` (= `request.id` Fastify, configuré pour être un vrai identifiant traçable — voir `http/server.ts`'s `genReqId`, pas le compteur `req-1`/`req-2` par défaut) à tout appel gRPC sortant
 3. `proto/identity.proto` — contrat `rpc Login(LoginRequest) returns (AuthResponse)`, source de vérité partagée ; chaque service génère ses propres stubs TS via `ts-proto` (`npm run proto:gen`), pas de package de stubs partagé — décision volontaire, cf. §3
-4. `services/identity/src/grpc/identityServiceImpl.ts` — `login()` : traduit `LoginRequest` (proto) en input domaine, lit `x-client-ip` via `grpc/clientIp.ts`
+4. `services/identity/src/grpc/identityServiceImpl.ts` — `login()` : traduit `LoginRequest` (proto) en input domaine, lit `x-client-ip` via `grpc/clientIp.ts` et `x-correlation-id` via `grpc/correlationId.ts`
 5. `services/identity/src/domain/loginAccount.ts` — logique métier pure : vérifie le mot de passe (argon2), le statut du compte, émet le JWT (`domain/tokens.ts`, lib `jose`) et le refresh token opaque
 6. `services/identity/src/infra/prismaAccountRepository.ts` / `prismaRefreshTokenRepository.ts` / `prismaAuditLogRepository.ts` — seuls fichiers qui parlent à PostgreSQL, via Prisma
 7. Retour : `identityServiceImpl.ts` reconstruit `AuthResponse`, la Gateway pose le cookie et renvoie le JSON
@@ -61,6 +61,10 @@ Chaque route de la Gateway convertit un code gRPC en code HTTP via une unique fo
 | tout le reste | 500, message générique | Erreur interne — le détail est loggé serveur, jamais renvoyé au client (`services/AGENT.md` §8) |
 
 Côté Identity, le mapping symétrique (erreur domaine → code gRPC) vit dans `services/identity/src/grpc/identityServiceImpl.ts`, fonction `toGrpcError()`.
+
+### Traçabilité : `correlation_id`
+
+Chaque requête HTTP entrante à la Gateway obtient un id (réutilise `x-correlation-id` si le client l'envoie déjà, sinon `crypto.randomUUID()` — `genReqId` dans `http/server.ts`). Cet id devient `request.id`, sert de valeur pour toutes les métadonnées `x-correlation-id` envoyées vers Identity, et apparaît sous la clé `correlation_id` dans les logs des deux services (`requestIdLogLabel` côté Gateway, logger enfant Pino côté Identity — `grpc/correlationId.ts`). Résultat : une seule valeur à chercher dans les logs pour reconstituer tout ce qu'une requête utilisateur a déclenché, à travers les deux services. Le patron (metadata gRPC + logger enfant) est celui à reprendre tel quel quand Billing/Delivery/etc. existeront.
 
 ## 3. Pourquoi chaque service génère ses propres stubs gRPC
 
