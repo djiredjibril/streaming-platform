@@ -15,7 +15,9 @@ Le contrat REST complet est documenté dans `docs/01-identity.md`, section "Endp
 - `POST /auth/profiles` `{displayName, isKidsProfile}` (Bearer requis) → `CreateProfile`
 - `GET /auth/profiles` (Bearer requis) → `ListProfiles`
 
-`login`/`refresh`/`register` transmettent aussi l'IP réelle du client en métadonnée gRPC `x-client-ip` (`clientIpMetadata()`) pour que l'`AuditLog` et le rate limiter d'Identity reflètent le vrai client plutôt que l'adresse de la Gateway. `mapGrpcError` traduit un `RESOURCE_EXHAUSTED` (limite dépassée) en `429`.
+`login`/`refresh`/`register` transmettent aussi l'IP réelle du client en métadonnée gRPC `x-client-ip` pour que l'`AuditLog` et le rate limiter d'Identity reflètent le vrai client plutôt que l'adresse de la Gateway. `mapGrpcError` traduit un `RESOURCE_EXHAUSTED` (limite dépassée) en `429`.
+
+**Correlation ID** (`services/AGENT.md` §5) : `request.id` de Fastify est redéfini (`genReqId` dans `http/server.ts`) pour réutiliser un header entrant `x-correlation-id` si présent, sinon générer un UUID — et `requestIdLogLabel: 'correlation_id'` renomme le champ dans les logs d'accès automatiques de Fastify. `requestMetadata()` (`http/routes/auth.ts`, remplace l'ancien `clientIpMetadata()`) pose cette valeur en métadonnée gRPC `x-correlation-id` sur **tous** les appels `callUnary` vers Identity (les 9 appels des 7 routes, pas seulement login/register/refresh) — permet de relier dans les logs une requête HTTP entrante à tout ce qu'elle déclenche côté Identity (`grpc/correlationId.ts` côté Identity). `x-client-ip` reste posé seulement sur register/login/refresh, via le même helper (`includeClientIp: true`).
 
 **`/auth/profiles` n'accepte jamais d'`accountId` du client** — il est dérivé du token via `requireAccountId()` (Bearer → `ValidateToken` → `accountId`), la même logique que `/auth/me`, extraite en helper partagé. Accepter un `accountId` du corps de la requête permettrait à n'importe quel compte authentifié de créer/lister des profils sur le compte de quelqu'un d'autre (IDOR) — voir le test "n'accepte jamais d'accountId du client" dans `tests/integration/authFlow.http.test.ts`.
 
@@ -43,7 +45,7 @@ Requête HTTP (ex: POST /auth/login)
 |---|---|
 | `src/index.ts` | Point d'entrée process : démarre le serveur HTTP |
 | `src/http/server.ts` | Construit l'instance Fastify (+ plugin `@fastify/cookie`), injecte les dépendances |
-| `src/http/routes/auth.ts` | Toutes les routes `/auth/*` — voir "Implémenté" ci-dessus. `requireAccountId()` (Bearer → `ValidateToken`) est partagé par `/auth/me` et `/auth/profiles` |
+| `src/http/routes/auth.ts` | Toutes les routes `/auth/*` — voir "Implémenté" ci-dessus. `requireAccountId()` (Bearer → `ValidateToken`) est partagé par `/auth/me` et `/auth/profiles`. `requestMetadata()` pose `x-correlation-id` (+ `x-client-ip` en option) sur chaque appel gRPC |
 | `src/http/schemas.ts` | Schémas Zod des corps de requête (validation de forme, pas de règles métier — Identity revalide tout) |
 | `src/grpc/identityClient.ts` | Client gRPC vers `IdentityService` + `callUnary()` (promisification générique réutilisée par toutes les routes) |
 | `src/grpc/generated/identity.ts` | **Généré** par `npm run proto:gen` depuis `/proto/identity.proto` — ne pas éditer à la main |
