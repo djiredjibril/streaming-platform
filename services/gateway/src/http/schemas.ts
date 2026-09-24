@@ -14,3 +14,16 @@ export const registerBodySchema = z.object({
 });
 
 export type RegisterBody = z.infer<typeof registerBodySchema>;
+
+export const verifyEmailBodySchema = z.object({
+  token: z.string(),
+});
+
+export type VerifyEmailBody = z.infer<typeof verifyEmailBodySchema>;
+
+export const loginBodySchema = z.object({
+  email: z.string(),
+  password: z.string(),
+});
+
+export type LoginBody = z.infer<typeof loginBodySchema>;

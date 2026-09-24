@@ -1,4 +1,5 @@
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import fastifyCookie from '@fastify/cookie';
 import type { IdentityServiceClient } from '../grpc/generated/identity.js';
 import type { Logger } from '@streaming/shared-logging';
 import { registerAuthRoutes } from './routes/auth.js';
@@ -20,6 +21,8 @@ export interface GatewayServerDeps {
  */
 export function buildGatewayServer(deps: GatewayServerDeps): FastifyInstance {
   const fastify = Fastify({ loggerInstance: deps.logger as unknown as FastifyBaseLogger });
+  // No secret needed: we only read/write the refresh token cookie's value verbatim, never sign it.
+  fastify.register(fastifyCookie);
   registerAuthRoutes(fastify, deps);
   return fastify;
 }
