@@ -75,11 +75,21 @@ export interface RegisterRequest {
 }
 
 export interface AuthResponse {
-  /** Empty when the account is not yet active (see Register comment above). */
+  /**
+   * Empty when the account is not yet active (see Register/VerifyEmail
+   * comments above).
+   */
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  account: Account | undefined;
+  account:
+    | Account
+    | undefined;
+  /**
+   * Set only by Register, on a freshly PENDING_VERIFICATION account. See the
+   * VerifyEmail comment above for why this is here instead of an email.
+   */
+  emailVerificationToken?: string | undefined;
 }
 
 export interface Account {
@@ -87,6 +97,40 @@ export interface Account {
   email: string;
   accountType: AccountType;
   status: string;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
+export interface LogoutRequest {
+  refreshToken: string;
+}
+
+export interface LogoutResponse {
+  success: boolean;
+}
+
+export interface ValidateTokenRequest {
+  accessToken: string;
+}
+
+export interface ValidateTokenResponse {
+  valid: boolean;
+  accountId: string;
+}
+
+export interface GetAccountRequest {
+  accountId: string;
 }
 
 function createBaseRegisterRequest(): RegisterRequest {
@@ -215,7 +259,7 @@ export const RegisterRequest: MessageFns<RegisterRequest> = {
 };
 
 function createBaseAuthResponse(): AuthResponse {
-  return { accessToken: "", refreshToken: "", expiresIn: 0, account: undefined };
+  return { accessToken: "", refreshToken: "", expiresIn: 0, account: undefined, emailVerificationToken: undefined };
 }
 
 export const AuthResponse: MessageFns<AuthResponse> = {
@@ -231,6 +275,9 @@ export const AuthResponse: MessageFns<AuthResponse> = {
     }
     if (message.account !== undefined) {
       Account.encode(message.account, writer.uint32(34).fork()).join();
+    }
+    if (message.emailVerificationToken !== undefined) {
+      writer.uint32(42).string(message.emailVerificationToken);
     }
     return writer;
   },
@@ -280,6 +327,14 @@ export const AuthResponse: MessageFns<AuthResponse> = {
             message.account = Account.decode(reader, reader.uint32());
             continue;
           }
+          case 5: {
+            if (tag !== 42) {
+              break;
+            }
+
+            message.emailVerificationToken = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -310,6 +365,11 @@ export const AuthResponse: MessageFns<AuthResponse> = {
         ? globalThis.Number(object.expires_in)
         : 0,
       account: isSet(object.account) ? Account.fromJSON(object.account) : undefined,
+      emailVerificationToken: isSet(object.emailVerificationToken)
+        ? globalThis.String(object.emailVerificationToken)
+        : isSet(object.email_verification_token)
+        ? globalThis.String(object.email_verification_token)
+        : undefined,
     };
   },
 
@@ -327,6 +387,9 @@ export const AuthResponse: MessageFns<AuthResponse> = {
     if (message.account !== undefined) {
       obj.account = Account.toJSON(message.account);
     }
+    if (message.emailVerificationToken !== undefined) {
+      obj.emailVerificationToken = message.emailVerificationToken;
+    }
     return obj;
   },
 
@@ -341,6 +404,7 @@ export const AuthResponse: MessageFns<AuthResponse> = {
     message.account = (object.account !== undefined && object.account !== null)
       ? Account.fromPartial(object.account)
       : undefined;
+    message.emailVerificationToken = object.emailVerificationToken ?? undefined;
     return message;
   },
 };
@@ -466,6 +530,606 @@ export const Account: MessageFns<Account> = {
   },
 };
 
+function createBaseVerifyEmailRequest(): VerifyEmailRequest {
+  return { token: "" };
+}
+
+export const VerifyEmailRequest: MessageFns<VerifyEmailRequest> = {
+  encode(message: VerifyEmailRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.token !== "") {
+      writer.uint32(10).string(message.token);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): VerifyEmailRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseVerifyEmailRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.token = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): VerifyEmailRequest {
+    return { token: isSet(object.token) ? globalThis.String(object.token) : "" };
+  },
+
+  toJSON(message: VerifyEmailRequest): unknown {
+    const obj: any = {};
+    if (message.token !== "") {
+      obj.token = message.token;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<VerifyEmailRequest>, I>>(base?: I): VerifyEmailRequest {
+    return VerifyEmailRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<VerifyEmailRequest>, I>>(object: I): VerifyEmailRequest {
+    const message = createBaseVerifyEmailRequest();
+    message.token = object.token ?? "";
+    return message;
+  },
+};
+
+function createBaseLoginRequest(): LoginRequest {
+  return { email: "", password: "" };
+}
+
+export const LoginRequest: MessageFns<LoginRequest> = {
+  encode(message: LoginRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.email !== "") {
+      writer.uint32(10).string(message.email);
+    }
+    if (message.password !== "") {
+      writer.uint32(18).string(message.password);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LoginRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLoginRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.email = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.password = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LoginRequest {
+    return {
+      email: isSet(object.email) ? globalThis.String(object.email) : "",
+      password: isSet(object.password) ? globalThis.String(object.password) : "",
+    };
+  },
+
+  toJSON(message: LoginRequest): unknown {
+    const obj: any = {};
+    if (message.email !== "") {
+      obj.email = message.email;
+    }
+    if (message.password !== "") {
+      obj.password = message.password;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LoginRequest>, I>>(base?: I): LoginRequest {
+    return LoginRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LoginRequest>, I>>(object: I): LoginRequest {
+    const message = createBaseLoginRequest();
+    message.email = object.email ?? "";
+    message.password = object.password ?? "";
+    return message;
+  },
+};
+
+function createBaseRefreshTokenRequest(): RefreshTokenRequest {
+  return { refreshToken: "" };
+}
+
+export const RefreshTokenRequest: MessageFns<RefreshTokenRequest> = {
+  encode(message: RefreshTokenRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.refreshToken !== "") {
+      writer.uint32(10).string(message.refreshToken);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RefreshTokenRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseRefreshTokenRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.refreshToken = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): RefreshTokenRequest {
+    return {
+      refreshToken: isSet(object.refreshToken)
+        ? globalThis.String(object.refreshToken)
+        : isSet(object.refresh_token)
+        ? globalThis.String(object.refresh_token)
+        : "",
+    };
+  },
+
+  toJSON(message: RefreshTokenRequest): unknown {
+    const obj: any = {};
+    if (message.refreshToken !== "") {
+      obj.refreshToken = message.refreshToken;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RefreshTokenRequest>, I>>(base?: I): RefreshTokenRequest {
+    return RefreshTokenRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RefreshTokenRequest>, I>>(object: I): RefreshTokenRequest {
+    const message = createBaseRefreshTokenRequest();
+    message.refreshToken = object.refreshToken ?? "";
+    return message;
+  },
+};
+
+function createBaseLogoutRequest(): LogoutRequest {
+  return { refreshToken: "" };
+}
+
+export const LogoutRequest: MessageFns<LogoutRequest> = {
+  encode(message: LogoutRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.refreshToken !== "") {
+      writer.uint32(10).string(message.refreshToken);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogoutRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLogoutRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.refreshToken = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LogoutRequest {
+    return {
+      refreshToken: isSet(object.refreshToken)
+        ? globalThis.String(object.refreshToken)
+        : isSet(object.refresh_token)
+        ? globalThis.String(object.refresh_token)
+        : "",
+    };
+  },
+
+  toJSON(message: LogoutRequest): unknown {
+    const obj: any = {};
+    if (message.refreshToken !== "") {
+      obj.refreshToken = message.refreshToken;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LogoutRequest>, I>>(base?: I): LogoutRequest {
+    return LogoutRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LogoutRequest>, I>>(object: I): LogoutRequest {
+    const message = createBaseLogoutRequest();
+    message.refreshToken = object.refreshToken ?? "";
+    return message;
+  },
+};
+
+function createBaseLogoutResponse(): LogoutResponse {
+  return { success: false };
+}
+
+export const LogoutResponse: MessageFns<LogoutResponse> = {
+  encode(message: LogoutResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.success !== false) {
+      writer.uint32(8).bool(message.success);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogoutResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseLogoutResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.success = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): LogoutResponse {
+    return { success: isSet(object.success) ? globalThis.Boolean(object.success) : false };
+  },
+
+  toJSON(message: LogoutResponse): unknown {
+    const obj: any = {};
+    if (message.success !== false) {
+      obj.success = message.success;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LogoutResponse>, I>>(base?: I): LogoutResponse {
+    return LogoutResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LogoutResponse>, I>>(object: I): LogoutResponse {
+    const message = createBaseLogoutResponse();
+    message.success = object.success ?? false;
+    return message;
+  },
+};
+
+function createBaseValidateTokenRequest(): ValidateTokenRequest {
+  return { accessToken: "" };
+}
+
+export const ValidateTokenRequest: MessageFns<ValidateTokenRequest> = {
+  encode(message: ValidateTokenRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.accessToken !== "") {
+      writer.uint32(10).string(message.accessToken);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ValidateTokenRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseValidateTokenRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.accessToken = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ValidateTokenRequest {
+    return {
+      accessToken: isSet(object.accessToken)
+        ? globalThis.String(object.accessToken)
+        : isSet(object.access_token)
+        ? globalThis.String(object.access_token)
+        : "",
+    };
+  },
+
+  toJSON(message: ValidateTokenRequest): unknown {
+    const obj: any = {};
+    if (message.accessToken !== "") {
+      obj.accessToken = message.accessToken;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ValidateTokenRequest>, I>>(base?: I): ValidateTokenRequest {
+    return ValidateTokenRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ValidateTokenRequest>, I>>(object: I): ValidateTokenRequest {
+    const message = createBaseValidateTokenRequest();
+    message.accessToken = object.accessToken ?? "";
+    return message;
+  },
+};
+
+function createBaseValidateTokenResponse(): ValidateTokenResponse {
+  return { valid: false, accountId: "" };
+}
+
+export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
+  encode(message: ValidateTokenResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.valid !== false) {
+      writer.uint32(8).bool(message.valid);
+    }
+    if (message.accountId !== "") {
+      writer.uint32(18).string(message.accountId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ValidateTokenResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseValidateTokenResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 8) {
+              break;
+            }
+
+            message.valid = reader.bool();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.accountId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ValidateTokenResponse {
+    return {
+      valid: isSet(object.valid) ? globalThis.Boolean(object.valid) : false,
+      accountId: isSet(object.accountId)
+        ? globalThis.String(object.accountId)
+        : isSet(object.account_id)
+        ? globalThis.String(object.account_id)
+        : "",
+    };
+  },
+
+  toJSON(message: ValidateTokenResponse): unknown {
+    const obj: any = {};
+    if (message.valid !== false) {
+      obj.valid = message.valid;
+    }
+    if (message.accountId !== "") {
+      obj.accountId = message.accountId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ValidateTokenResponse>, I>>(base?: I): ValidateTokenResponse {
+    return ValidateTokenResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ValidateTokenResponse>, I>>(object: I): ValidateTokenResponse {
+    const message = createBaseValidateTokenResponse();
+    message.valid = object.valid ?? false;
+    message.accountId = object.accountId ?? "";
+    return message;
+  },
+};
+
+function createBaseGetAccountRequest(): GetAccountRequest {
+  return { accountId: "" };
+}
+
+export const GetAccountRequest: MessageFns<GetAccountRequest> = {
+  encode(message: GetAccountRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.accountId !== "") {
+      writer.uint32(10).string(message.accountId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetAccountRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseGetAccountRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.accountId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): GetAccountRequest {
+    return {
+      accountId: isSet(object.accountId)
+        ? globalThis.String(object.accountId)
+        : isSet(object.account_id)
+        ? globalThis.String(object.account_id)
+        : "",
+    };
+  },
+
+  toJSON(message: GetAccountRequest): unknown {
+    const obj: any = {};
+    if (message.accountId !== "") {
+      obj.accountId = message.accountId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetAccountRequest>, I>>(base?: I): GetAccountRequest {
+    return GetAccountRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetAccountRequest>, I>>(object: I): GetAccountRequest {
+    const message = createBaseGetAccountRequest();
+    message.accountId = object.accountId ?? "";
+    return message;
+  },
+};
+
 /**
  * IdentityService is the source of truth for authentication and account
  * state. Other domains (Billing, Delivery, Social) call it rather than
@@ -476,9 +1140,8 @@ export const IdentityServiceService = {
   /**
    * Creates an Account. Does NOT issue an active session: new accounts start
    * in `pending_verification` and access_token/refresh_token come back empty
-   * until a follow-up verification feature (or Login, once implemented)
-   * activates the account. Callers must check `account.status`, not assume
-   * a non-empty token.
+   * until VerifyEmail activates the account. Callers must check
+   * `account.status`, not assume a non-empty token.
    */
   register: {
     path: "/identity.v1.IdentityService/Register" as const,
@@ -489,26 +1152,133 @@ export const IdentityServiceService = {
     responseSerialize: (value: AuthResponse): Buffer => Buffer.from(AuthResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): AuthResponse => AuthResponse.decode(value),
   },
+  /**
+   * V1 mock only: there is no real email-sending infra yet, so the
+   * verification token is returned directly in RegisterResponse's
+   * `email_verification_token` instead of being emailed. Exchanging it here
+   * activates the account (status -> ACTIVE). Replace with a real
+   * email-delivery flow before this ships beyond local dev.
+   */
+  verifyEmail: {
+    path: "/identity.v1.IdentityService/VerifyEmail" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: VerifyEmailRequest): Buffer => Buffer.from(VerifyEmailRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): VerifyEmailRequest => VerifyEmailRequest.decode(value),
+    responseSerialize: (value: AuthResponse): Buffer => Buffer.from(AuthResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AuthResponse => AuthResponse.decode(value),
+  },
+  /**
+   * Issues a JWT access token (short-lived) and an opaque refresh token
+   * (long-lived, stored hashed). Rejects PENDING_VERIFICATION/SUSPENDED
+   * accounts.
+   */
+  login: {
+    path: "/identity.v1.IdentityService/Login" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: LoginRequest): Buffer => Buffer.from(LoginRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): LoginRequest => LoginRequest.decode(value),
+    responseSerialize: (value: AuthResponse): Buffer => Buffer.from(AuthResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AuthResponse => AuthResponse.decode(value),
+  },
+  /**
+   * Rotates a refresh token: the presented token is revoked and a new
+   * access/refresh pair is issued. Presenting an already-revoked token is
+   * treated as token theft — ALL of the account's refresh tokens are
+   * revoked and UNAUTHENTICATED is returned.
+   */
+  refreshToken: {
+    path: "/identity.v1.IdentityService/RefreshToken" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RefreshTokenRequest): Buffer => Buffer.from(RefreshTokenRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RefreshTokenRequest => RefreshTokenRequest.decode(value),
+    responseSerialize: (value: AuthResponse): Buffer => Buffer.from(AuthResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): AuthResponse => AuthResponse.decode(value),
+  },
+  /** Revokes the presented refresh token. Idempotent. */
+  logout: {
+    path: "/identity.v1.IdentityService/Logout" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: LogoutRequest): Buffer => Buffer.from(LogoutRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): LogoutRequest => LogoutRequest.decode(value),
+    responseSerialize: (value: LogoutResponse): Buffer => Buffer.from(LogoutResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): LogoutResponse => LogoutResponse.decode(value),
+  },
+  /**
+   * Verifies a JWT access token's signature/expiry. Called by every other
+   * service (and the Gateway) before a protected action — this will be the
+   * most frequently called RPC in the whole system.
+   */
+  validateToken: {
+    path: "/identity.v1.IdentityService/ValidateToken" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ValidateTokenRequest): Buffer => Buffer.from(ValidateTokenRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ValidateTokenRequest => ValidateTokenRequest.decode(value),
+    responseSerialize: (value: ValidateTokenResponse): Buffer =>
+      Buffer.from(ValidateTokenResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ValidateTokenResponse => ValidateTokenResponse.decode(value),
+  },
+  getAccount: {
+    path: "/identity.v1.IdentityService/GetAccount" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: GetAccountRequest): Buffer => Buffer.from(GetAccountRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetAccountRequest => GetAccountRequest.decode(value),
+    responseSerialize: (value: Account): Buffer => Buffer.from(Account.encode(value).finish()),
+    responseDeserialize: (value: Buffer): Account => Account.decode(value),
+  },
 } as const;
 
 export interface IdentityServiceServer extends UntypedServiceImplementation {
   /**
    * Creates an Account. Does NOT issue an active session: new accounts start
    * in `pending_verification` and access_token/refresh_token come back empty
-   * until a follow-up verification feature (or Login, once implemented)
-   * activates the account. Callers must check `account.status`, not assume
-   * a non-empty token.
+   * until VerifyEmail activates the account. Callers must check
+   * `account.status`, not assume a non-empty token.
    */
   register: handleUnaryCall<RegisterRequest, AuthResponse>;
+  /**
+   * V1 mock only: there is no real email-sending infra yet, so the
+   * verification token is returned directly in RegisterResponse's
+   * `email_verification_token` instead of being emailed. Exchanging it here
+   * activates the account (status -> ACTIVE). Replace with a real
+   * email-delivery flow before this ships beyond local dev.
+   */
+  verifyEmail: handleUnaryCall<VerifyEmailRequest, AuthResponse>;
+  /**
+   * Issues a JWT access token (short-lived) and an opaque refresh token
+   * (long-lived, stored hashed). Rejects PENDING_VERIFICATION/SUSPENDED
+   * accounts.
+   */
+  login: handleUnaryCall<LoginRequest, AuthResponse>;
+  /**
+   * Rotates a refresh token: the presented token is revoked and a new
+   * access/refresh pair is issued. Presenting an already-revoked token is
+   * treated as token theft — ALL of the account's refresh tokens are
+   * revoked and UNAUTHENTICATED is returned.
+   */
+  refreshToken: handleUnaryCall<RefreshTokenRequest, AuthResponse>;
+  /** Revokes the presented refresh token. Idempotent. */
+  logout: handleUnaryCall<LogoutRequest, LogoutResponse>;
+  /**
+   * Verifies a JWT access token's signature/expiry. Called by every other
+   * service (and the Gateway) before a protected action — this will be the
+   * most frequently called RPC in the whole system.
+   */
+  validateToken: handleUnaryCall<ValidateTokenRequest, ValidateTokenResponse>;
+  getAccount: handleUnaryCall<GetAccountRequest, Account>;
 }
 
 export interface IdentityServiceClient extends Client {
   /**
    * Creates an Account. Does NOT issue an active session: new accounts start
    * in `pending_verification` and access_token/refresh_token come back empty
-   * until a follow-up verification feature (or Login, once implemented)
-   * activates the account. Callers must check `account.status`, not assume
-   * a non-empty token.
+   * until VerifyEmail activates the account. Callers must check
+   * `account.status`, not assume a non-empty token.
    */
   register(
     request: RegisterRequest,
@@ -524,6 +1294,117 @@ export interface IdentityServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * V1 mock only: there is no real email-sending infra yet, so the
+   * verification token is returned directly in RegisterResponse's
+   * `email_verification_token` instead of being emailed. Exchanging it here
+   * activates the account (status -> ACTIVE). Replace with a real
+   * email-delivery flow before this ships beyond local dev.
+   */
+  verifyEmail(
+    request: VerifyEmailRequest,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  verifyEmail(
+    request: VerifyEmailRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  verifyEmail(
+    request: VerifyEmailRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Issues a JWT access token (short-lived) and an opaque refresh token
+   * (long-lived, stored hashed). Rejects PENDING_VERIFICATION/SUSPENDED
+   * accounts.
+   */
+  login(request: LoginRequest, callback: (error: ServiceError | null, response: AuthResponse) => void): ClientUnaryCall;
+  login(
+    request: LoginRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  login(
+    request: LoginRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Rotates a refresh token: the presented token is revoked and a new
+   * access/refresh pair is issued. Presenting an already-revoked token is
+   * treated as token theft — ALL of the account's refresh tokens are
+   * revoked and UNAUTHENTICATED is returned.
+   */
+  refreshToken(
+    request: RefreshTokenRequest,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  refreshToken(
+    request: RefreshTokenRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  refreshToken(
+    request: RefreshTokenRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: AuthResponse) => void,
+  ): ClientUnaryCall;
+  /** Revokes the presented refresh token. Idempotent. */
+  logout(
+    request: LogoutRequest,
+    callback: (error: ServiceError | null, response: LogoutResponse) => void,
+  ): ClientUnaryCall;
+  logout(
+    request: LogoutRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: LogoutResponse) => void,
+  ): ClientUnaryCall;
+  logout(
+    request: LogoutRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: LogoutResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Verifies a JWT access token's signature/expiry. Called by every other
+   * service (and the Gateway) before a protected action — this will be the
+   * most frequently called RPC in the whole system.
+   */
+  validateToken(
+    request: ValidateTokenRequest,
+    callback: (error: ServiceError | null, response: ValidateTokenResponse) => void,
+  ): ClientUnaryCall;
+  validateToken(
+    request: ValidateTokenRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ValidateTokenResponse) => void,
+  ): ClientUnaryCall;
+  validateToken(
+    request: ValidateTokenRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ValidateTokenResponse) => void,
+  ): ClientUnaryCall;
+  getAccount(
+    request: GetAccountRequest,
+    callback: (error: ServiceError | null, response: Account) => void,
+  ): ClientUnaryCall;
+  getAccount(
+    request: GetAccountRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Account) => void,
+  ): ClientUnaryCall;
+  getAccount(
+    request: GetAccountRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Account) => void,
   ): ClientUnaryCall;
 }
 
