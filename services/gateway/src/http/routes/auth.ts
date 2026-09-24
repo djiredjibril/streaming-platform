@@ -1,23 +1,27 @@
 import * as grpc from '@grpc/grpc-js';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Logger } from '@streaming/shared-logging';
 import { callUnary } from '../../grpc/identityClient.js';
 import {
   AccountType,
   type Account,
   type AuthResponse,
+  type CreateProfileRequest,
   type GetAccountRequest,
   type IdentityServiceClient,
+  type ListProfilesRequest,
+  type ListProfilesResponse,
   type LoginRequest,
   type LogoutRequest,
   type LogoutResponse,
+  type Profile,
   type RefreshTokenRequest,
   type RegisterRequest,
   type ValidateTokenRequest,
   type ValidateTokenResponse,
   type VerifyEmailRequest,
 } from '../../grpc/generated/identity.js';
-import { loginBodySchema, registerBodySchema, verifyEmailBodySchema } from '../schemas.js';
+import { createProfileBodySchema, loginBodySchema, registerBodySchema, verifyEmailBodySchema } from '../schemas.js';
 
 export interface AuthRouteDeps {
   identityClient: IdentityServiceClient;
@@ -70,6 +74,39 @@ function mapGrpcError(error: unknown, logger: Logger, event: string): { status: 
       logger.error({ event, error: String(error) });
       return { status: 500, body: { error: 'Internal error' } };
   }
+}
+
+/**
+ * Extracts the `Authorization: Bearer <token>` header, validates it via
+ * IdentityService.ValidateToken, and returns the accountId it resolves to.
+ * Every route that acts on "the caller's own account" (currently /auth/me
+ * and /auth/profiles) MUST derive accountId this way rather than accepting
+ * one from the request — otherwise any authenticated caller could read or
+ * write another account's data by just passing its id (IDOR).
+ *
+ * Returns null (after sending the error response itself) when
+ * unauthenticated/invalid, so callers can `if (!accountId) return;`.
+ */
+async function requireAccountId(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  client: IdentityServiceClient,
+): Promise<string | null> {
+  const authHeader = request.headers.authorization;
+  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;
+  if (!accessToken) {
+    reply.code(401).send({ error: 'Missing bearer token' });
+    return null;
+  }
+
+  const validation = await callUnary<ValidateTokenRequest, ValidateTokenResponse>(client.validateToken.bind(client), {
+    accessToken,
+  });
+  if (!validation.valid) {
+    reply.code(401).send({ error: 'Invalid or expired access token' });
+    return null;
+  }
+  return validation.accountId;
 }
 
 /** Registers the /auth/* REST routes. See docs/01-identity.md, "Endpoints exposés au frontend", for the REST contract. */
@@ -190,27 +227,51 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
   });
 
   fastify.get('/auth/me', async (request, reply) => {
-    const authHeader = request.headers.authorization;
-    const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined;
-    if (!accessToken) {
-      return reply.code(401).send({ error: 'Missing bearer token' });
-    }
+    const accountId = await requireAccountId(request, reply, client);
+    if (!accountId) return;
 
     try {
-      const validation = await callUnary<ValidateTokenRequest, ValidateTokenResponse>(
-        client.validateToken.bind(client),
-        { accessToken },
-      );
-      if (!validation.valid) {
-        return reply.code(401).send({ error: 'Invalid or expired access token' });
-      }
-
-      const account = await callUnary<GetAccountRequest, Account>(client.getAccount.bind(client), {
-        accountId: validation.accountId,
-      });
+      const account = await callUnary<GetAccountRequest, Account>(client.getAccount.bind(client), { accountId });
       return reply.code(200).send(account);
     } catch (error) {
       const { status, body } = mapGrpcError(error, deps.logger, 'me_proxy_failed');
+      return reply.code(status).send(body);
+    }
+  });
+
+  fastify.post('/auth/profiles', async (request, reply) => {
+    const accountId = await requireAccountId(request, reply, client);
+    if (!accountId) return;
+
+    const parsed = createProfileBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request body' });
+    }
+
+    try {
+      const profile = await callUnary<CreateProfileRequest, Profile>(client.createProfile.bind(client), {
+        accountId,
+        displayName: parsed.data.displayName,
+        isKidsProfile: parsed.data.isKidsProfile,
+      });
+      return reply.code(200).send(profile);
+    } catch (error) {
+      const { status, body } = mapGrpcError(error, deps.logger, 'create_profile_proxy_failed');
+      return reply.code(status).send(body);
+    }
+  });
+
+  fastify.get('/auth/profiles', async (request, reply) => {
+    const accountId = await requireAccountId(request, reply, client);
+    if (!accountId) return;
+
+    try {
+      const response = await callUnary<ListProfilesRequest, ListProfilesResponse>(client.listProfiles.bind(client), {
+        accountId,
+      });
+      return reply.code(200).send(response.profiles);
+    } catch (error) {
+      const { status, body } = mapGrpcError(error, deps.logger, 'list_profiles_proxy_failed');
       return reply.code(status).send(body);
     }
   });

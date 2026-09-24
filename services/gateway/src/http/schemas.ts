@@ -27,3 +27,10 @@ export const loginBodySchema = z.object({
 });
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
+
+export const createProfileBodySchema = z.object({
+  displayName: z.string().trim().min(1).max(100),
+  isKidsProfile: z.boolean(),
+});
+
+export type CreateProfileBody = z.infer<typeof createProfileBodySchema>;
