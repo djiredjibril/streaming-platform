@@ -39,7 +39,7 @@ const REFRESH_TOKEN_COOKIE = 'refresh_token';
 // here since the Gateway has no dependency on Identity's domain layer at runtime.
 const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
-/** Metadata carrying the real client IP, for Identity's AuditLog (login/refresh) — see grpc/clientIp.ts on the Identity side. */
+/** Metadata carrying the real client IP, for Identity's AuditLog (login/refresh) and rate limiter (login/register) — see grpc/clientIp.ts on the Identity side. */
 function clientIpMetadata(ip: string): grpc.Metadata {
   const metadata = new grpc.Metadata();
   metadata.set('x-client-ip', ip);
@@ -70,6 +70,8 @@ function mapGrpcError(error: unknown, logger: Logger, event: string): { status: 
       return { status: 403, body: { error: serviceError.details || serviceError.message } };
     case grpc.status.NOT_FOUND:
       return { status: 404, body: { error: serviceError.details || serviceError.message } };
+    case grpc.status.RESOURCE_EXHAUSTED:
+      return { status: 429, body: { error: serviceError.details || serviceError.message } };
     default:
       logger.error({ event, error: String(error) });
       return { status: 500, body: { error: 'Internal error' } };
@@ -121,12 +123,16 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRouteDeps
     const body = parsed.data;
 
     try {
-      const response = await callUnary<RegisterRequest, AuthResponse>(client.register.bind(client), {
-        email: body.email,
-        password: body.password,
-        accountType: accountTypeToProto[body.accountType],
-        universityEmail: body.universityEmail,
-      });
+      const response = await callUnary<RegisterRequest, AuthResponse>(
+        client.register.bind(client),
+        {
+          email: body.email,
+          password: body.password,
+          accountType: accountTypeToProto[body.accountType],
+          universityEmail: body.universityEmail,
+        },
+        clientIpMetadata(request.ip),
+      );
 
       // No cookie: Register never returns an active session (tokens are empty).
       return reply.code(200).send({
