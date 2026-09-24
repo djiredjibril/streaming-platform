@@ -93,3 +93,11 @@ export class InvalidProfileInputError extends Error {
     this.name = 'InvalidProfileInputError';
   }
 }
+
+/** Thrown by loginAccount/registerAccount when the caller's IP has exceeded its attempt budget. Maps to gRPC RESOURCE_EXHAUSTED. */
+export class RateLimitExceededError extends Error {
+  constructor(public readonly retryAfterSeconds: number) {
+    super(`Too many attempts; retry in ${retryAfterSeconds} seconds`);
+    this.name = 'RateLimitExceededError';
+  }
+}
