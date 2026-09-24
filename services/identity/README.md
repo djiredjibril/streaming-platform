@@ -6,6 +6,7 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 
 - `Register` : crée un `Account` (+ `StudentVerification` si `ETUDIANT`) avec un mot de passe hashé en argon2id. L'account est créé `PENDING_VERIFICATION` et **aucun token n'est émis** — `access_token`/`refresh_token` reviennent vides tant que `VerifyEmail` n'a pas activé le compte. La réponse contient aussi `email_verification_token` (V1 mock : pas d'envoi d'email réel, cf. commentaire sur `rpc VerifyEmail` dans le `.proto`).
 - `VerifyEmail` : échange ce token contre l'activation du compte (`status = ACTIVE`). Token à usage unique, expire après 24h.
+- `Login` : authentifie par email/mot de passe (argon2). Rejette les comptes `PENDING_VERIFICATION`/`SUSPENDED`. Succès : émet un JWT access token (15 min, HS256) + un refresh token opaque (30 jours, stocké hashé). Chaque tentative (succès/échec) écrit un `AuditLog`.
 
 ## Architecture
 
@@ -40,11 +41,17 @@ Requête gRPC (Register)
 | `src/grpc/generated/identity.ts` | **Généré** par `npm run proto:gen` depuis `/proto/identity.proto` — ne pas éditer à la main |
 | `src/domain/registerAccount.ts` | Logique métier de `Register` : validation, hash, génération du token de vérification |
 | `src/domain/verifyEmail.ts` | Logique métier de `VerifyEmail` : vérifie le token, active le compte |
+| `src/domain/loginAccount.ts` | Logique métier de `Login` : vérification credentials, statut du compte, émission access+refresh token, audit |
 | `src/domain/tokens.ts` | Génération/hash de tokens opaques (refresh, vérification email) + signature/vérification JWT (`jose`) |
 | `src/domain/schemas.ts` | Schémas Zod de validation d'entrée |
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `identityServiceImpl.ts` |
 | `src/domain/accountRepository.ts` | Port (interface) `AccountRepository` — permet de tester la logique métier sans DB |
+| `src/domain/refreshTokenRepository.ts` | Port (interface) `RefreshTokenRepository` |
+| `src/domain/auditLogRepository.ts` | Port (interface) `AuditLogRepository` |
+| `src/grpc/clientIp.ts` | Extrait l'IP client (métadonnée `x-client-ip` posée par la Gateway, sinon `call.getPeer()`) pour l'audit |
 | `src/infra/prismaAccountRepository.ts` | Implémentation Prisma du port `AccountRepository` |
+| `src/infra/prismaRefreshTokenRepository.ts` | Implémentation Prisma du port `RefreshTokenRepository` |
+| `src/infra/prismaAuditLogRepository.ts` | Implémentation Prisma du port `AuditLogRepository` |
 | `src/infra/prismaClient.ts` | Singleton `PrismaClient` du process |
 | `src/infra/logger.ts` | Logger Pino du service (via `@streaming/shared-logging`) |
 | `prisma/schema.prisma` | Schéma DB complet du domaine Identity (voir ER dans `docs/01-identity.md`) |
@@ -57,6 +64,7 @@ Requête gRPC (Register)
 | Variable | Rôle | Défaut |
 |---|---|---|
 | `DATABASE_URL` | Connexion PostgreSQL (Prisma) | — requis |
+| `JWT_SECRET` | Secret HS256 de signature des access tokens — fail-fast au démarrage si absent | — requis |
 | `IDENTITY_GRPC_ADDRESS` | Adresse d'écoute du serveur gRPC | `0.0.0.0:50051` |
 
 ## Lancer en local
@@ -74,7 +82,7 @@ npm run build && node dist/index.js
 npm test              # depuis la racine, ou `npx vitest run` ici
 ```
 
-- `tests/unit/` : logique `/domain` pure, repository en mémoire partagé (`tests/unit/fakes/inMemoryAccountRepository.ts`) — pas de DB
+- `tests/unit/` : logique `/domain` pure, repositories en mémoire partagés (`tests/unit/fakes/`) — pas de DB
 - `tests/integration/register.grpc.test.ts` : cas d'erreur de `Register` (email dupliqué, étudiant sans email universitaire)
 - `tests/integration/authFlow.grpc.test.ts` : parcours complet du cycle de compte (register → verify → login → refresh → logout → ...), un seul PostgreSQL Testcontainers partagé, grandit au fil des sous-features — Testcontainers (vrai PostgreSQL éphémère) + vrai client gRPC, aucune donnée mockée
 
