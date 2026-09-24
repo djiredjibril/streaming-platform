@@ -4,21 +4,30 @@ Seul service que le frontend appelle directement. Expose **REST** pour l'authent
 
 ## Implémenté
 
-- `POST /auth/register` : valide la forme du corps (Zod), appelle `IdentityService.Register` en gRPC, traduit la réponse/erreur en JSON/code HTTP. Voir `docs/01-identity.md`, section "Endpoints exposés au frontend", pour le contrat REST complet (routes futures incluses).
+Le contrat REST complet est documenté dans `docs/01-identity.md`, section "Endpoints exposés au frontend". Toutes les routes valident la forme du corps (Zod) puis appellent le RPC `IdentityService` correspondant — aucune logique métier ici, seulement de la traduction proto ↔ HTTP et le mapping erreurs gRPC → codes HTTP (`mapGrpcError` dans `http/routes/auth.ts`).
+
+- `POST /auth/register` → `Register`
+- `POST /auth/verify-email` → `VerifyEmail`
+- `POST /auth/login` → `Login` — pose le refresh token en cookie `httpOnly` (`Path=/auth`, `sameSite=lax`) ; le refresh token n'apparaît jamais dans le JSON (`apps/web/AGENT.md`)
+- `POST /auth/refresh` (lit le cookie) → `RefreshToken` — pose un nouveau cookie ; en cas d'erreur (ex: vol détecté), le cookie est effacé
+- `POST /auth/logout` (lit le cookie) → `Logout` — efface le cookie, `204`
+- `GET /auth/me` (header `Authorization: Bearer <token>`) → `ValidateToken` puis `GetAccount`
+
+`login`/`refresh` transmettent aussi l'IP réelle du client en métadonnée gRPC `x-client-ip` (`clientIpMetadata()`) pour que l'`AuditLog` d'Identity reflète le vrai client plutôt que l'adresse de la Gateway.
 
 ## Architecture
 
 ```
-Requête HTTP (POST /auth/register)
+Requête HTTP (ex: POST /auth/login)
         │
         ▼
-  http/server.ts            <- instance Fastify, enregistre les routes
+  http/server.ts            <- instance Fastify, plugin @fastify/cookie, enregistre les routes
         │
         ▼
-  http/routes/auth.ts        <- valide le corps (Zod), appelle le client gRPC,
-        │                        mappe erreurs gRPC -> codes HTTP
+  http/routes/auth.ts        <- valide le corps (Zod), appelle le client gRPC via callUnary(),
+        │                        pose/lit le cookie refresh_token, mappe erreurs gRPC -> codes HTTP
         ▼
-  grpc/identityClient.ts     <- client IdentityService (gRPC)
+  grpc/identityClient.ts     <- client IdentityService (gRPC) + callUnary() (promisification générique)
         │
         ▼
   services/identity (autre service, appelé via le réseau)
@@ -29,14 +38,14 @@ Requête HTTP (POST /auth/register)
 | Fichier | Rôle |
 |---|---|
 | `src/index.ts` | Point d'entrée process : démarre le serveur HTTP |
-| `src/http/server.ts` | Construit l'instance Fastify, injecte les dépendances |
-| `src/http/routes/auth.ts` | Handler `POST /auth/register` |
-| `src/http/schemas.ts` | Schéma Zod du corps de requête (validation de forme, pas de règles métier — Identity revalide tout) |
-| `src/grpc/identityClient.ts` | Construit le client gRPC vers `IdentityService` |
+| `src/http/server.ts` | Construit l'instance Fastify (+ plugin `@fastify/cookie`), injecte les dépendances |
+| `src/http/routes/auth.ts` | Toutes les routes `/auth/*` — voir "Implémenté" ci-dessus |
+| `src/http/schemas.ts` | Schémas Zod des corps de requête (validation de forme, pas de règles métier — Identity revalide tout) |
+| `src/grpc/identityClient.ts` | Client gRPC vers `IdentityService` + `callUnary()` (promisification générique réutilisée par toutes les routes) |
 | `src/grpc/generated/identity.ts` | **Généré** par `npm run proto:gen` depuis `/proto/identity.proto` — ne pas éditer à la main |
 | `src/infra/logger.ts` | Logger Pino du service (via `@streaming/shared-logging`) |
-| `tests/unit/` | Route testée via `fastify.inject`, client gRPC mocké |
-| `tests/integration/` | Bout-en-bout réel : vrai serveur gRPC Identity (Testcontainers Postgres) + vraie requête HTTP sur la Gateway |
+| `tests/unit/` | Routes testées via `fastify.inject`, client gRPC mocké (fake générique couvrant n'importe quelle méthode) |
+| `tests/integration/authFlow.http.test.ts` | Bout-en-bout réel : vrai serveur gRPC Identity (Testcontainers Postgres) + vraies requêtes HTTP sur la Gateway, cycle de session complet |
 
 ## Variables d'environnement
 
