@@ -27,6 +27,7 @@ export const registerInputSchema = z
 
 export type RegisterInput = z.infer<typeof registerInputSchema>;
 
+/** `accountId` is validated here too even though it's not user-typed input — createProfile.ts trusts nothing implicitly, even values passed internally from the gRPC layer (services/AGENT.md §7). */
 export const createProfileInputSchema = z.object({
   accountId: z.string(),
   displayName: z.string().trim().min(1).max(100),
