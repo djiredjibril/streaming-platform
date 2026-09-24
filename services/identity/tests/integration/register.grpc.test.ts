@@ -28,7 +28,7 @@ describe('IdentityService.Register (real Postgres + gRPC)', () => {
     });
 
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    server = buildIdentityServer(prisma, logger);
+    server = buildIdentityServer(prisma, 'test-jwt-secret', logger);
     const port = await startIdentityServer(server, '127.0.0.1:0');
     client = new IdentityServiceClient(`127.0.0.1:${port}`, grpc.credentials.createInsecure());
   }, 60_000);

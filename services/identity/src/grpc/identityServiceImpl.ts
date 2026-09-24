@@ -1,24 +1,35 @@
 import * as grpc from '@grpc/grpc-js';
 import type { ServerUnaryCall, sendUnaryData } from '@grpc/grpc-js';
 import type { AccountRecord, AccountRepository } from '../domain/accountRepository.js';
+import type { AuditLogRepository } from '../domain/auditLogRepository.js';
+import type { RefreshTokenRepository } from '../domain/refreshTokenRepository.js';
 import {
+  AccountNotVerifiedError,
+  AccountSuspendedError,
   EmailAlreadyRegisteredError,
+  InvalidCredentialsError,
   InvalidOrExpiredTokenError,
   InvalidRegisterInputError,
 } from '../domain/errors.js';
+import { loginAccount } from '../domain/loginAccount.js';
 import { registerAccount } from '../domain/registerAccount.js';
 import { verifyEmail } from '../domain/verifyEmail.js';
 import {
   AccountType,
   type Account as ProtoAccount,
   type AuthResponse,
+  type LoginRequest,
   type RegisterRequest,
   type VerifyEmailRequest,
 } from './generated/identity.js';
+import { getClientIp } from './clientIp.js';
 import type { Logger } from '../infra/logger.js';
 
 export interface IdentityServiceDeps {
   accountRepository: AccountRepository;
+  refreshTokenRepository: RefreshTokenRepository;
+  auditLogRepository: AuditLogRepository;
+  jwtSecret: string;
   logger: Logger;
 }
 
@@ -99,6 +110,33 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async login(
+      call: ServerUnaryCall<LoginRequest, AuthResponse>,
+      callback: sendUnaryData<AuthResponse>,
+    ): Promise<void> {
+      try {
+        const result = await loginAccount(
+          { email: call.request.email, password: call.request.password, ipAddress: getClientIp(call) },
+          {
+            accountRepository: deps.accountRepository,
+            refreshTokenRepository: deps.refreshTokenRepository,
+            auditLogRepository: deps.auditLogRepository,
+            jwtSecret: deps.jwtSecret,
+          },
+        );
+
+        deps.logger.info({ event: 'login_success', accountId: result.account.id });
+        callback(null, {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          expiresIn: result.expiresIn,
+          account: accountToProto(result.account),
+        });
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -112,6 +150,15 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof InvalidOrExpiredTokenError) {
     return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
+  }
+  if (error instanceof InvalidCredentialsError) {
+    return buildServiceError(grpc.status.UNAUTHENTICATED, error.message);
+  }
+  if (error instanceof AccountNotVerifiedError) {
+    return buildServiceError(grpc.status.FAILED_PRECONDITION, error.message);
+  }
+  if (error instanceof AccountSuspendedError) {
+    return buildServiceError(grpc.status.PERMISSION_DENIED, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }

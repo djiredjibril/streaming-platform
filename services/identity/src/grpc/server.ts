@@ -1,20 +1,25 @@
 import * as grpc from '@grpc/grpc-js';
 import type { PrismaClient } from '@prisma/client';
 import { PrismaAccountRepository } from '../infra/prismaAccountRepository.js';
+import { PrismaAuditLogRepository } from '../infra/prismaAuditLogRepository.js';
+import { PrismaRefreshTokenRepository } from '../infra/prismaRefreshTokenRepository.js';
 import { logger, type Logger } from '../infra/logger.js';
 import { createIdentityServiceImpl } from './identityServiceImpl.js';
 import { IdentityServiceService } from './generated/identity.js';
 
 /**
- * Wires the gRPC server: registers IdentityServiceService against a
- * Prisma-backed AccountRepository. Takes `prisma`/`log` as parameters
- * (rather than importing the singletons directly) so tests can pass a
- * Testcontainers-backed PrismaClient instead.
+ * Wires the gRPC server: registers IdentityServiceService against the
+ * Prisma-backed repositories. Takes `prisma`/`jwtSecret`/`log` as
+ * parameters (rather than importing/reading singletons directly) so tests
+ * can pass a Testcontainers-backed PrismaClient and a throwaway secret.
  */
-export function buildIdentityServer(prisma: PrismaClient, log: Logger = logger): grpc.Server {
+export function buildIdentityServer(prisma: PrismaClient, jwtSecret: string, log: Logger = logger): grpc.Server {
   const server = new grpc.Server();
   const impl = createIdentityServiceImpl({
     accountRepository: new PrismaAccountRepository(prisma),
+    refreshTokenRepository: new PrismaRefreshTokenRepository(prisma),
+    auditLogRepository: new PrismaAuditLogRepository(prisma),
+    jwtSecret,
     logger: log,
   });
   server.addService(IdentityServiceService, impl);
