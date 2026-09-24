@@ -12,7 +12,9 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prisma:generate": "npm run prisma:generate --workspace=@streaming/identity",
+    "prisma:migrate": "npm run prisma:migrate --workspace=@streaming/identity"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.15.0",
