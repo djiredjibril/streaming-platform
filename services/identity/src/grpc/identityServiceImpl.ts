@@ -2,6 +2,7 @@ import * as grpc from '@grpc/grpc-js';
 import type { ServerUnaryCall, sendUnaryData } from '@grpc/grpc-js';
 import type { AccountRecord, AccountRepository } from '../domain/accountRepository.js';
 import type { AuditLogRepository } from '../domain/auditLogRepository.js';
+import type { ProfileRecord, ProfileRepository } from '../domain/profileRepository.js';
 import type { RefreshTokenRepository } from '../domain/refreshTokenRepository.js';
 import {
   AccountNotFoundError,
@@ -11,11 +12,15 @@ import {
   InvalidAccessTokenError,
   InvalidCredentialsError,
   InvalidOrExpiredTokenError,
+  InvalidProfileInputError,
   InvalidRefreshTokenError,
   InvalidRegisterInputError,
+  ProfileLimitExceededError,
   RefreshTokenReuseDetectedError,
 } from '../domain/errors.js';
+import { createProfile } from '../domain/createProfile.js';
 import { getAccount } from '../domain/getAccount.js';
+import { listProfiles } from '../domain/listProfiles.js';
 import { loginAccount } from '../domain/loginAccount.js';
 import { logoutAccount } from '../domain/logoutAccount.js';
 import { refreshSession } from '../domain/refreshSession.js';
@@ -26,10 +31,14 @@ import {
   AccountType,
   type Account as ProtoAccount,
   type AuthResponse,
+  type CreateProfileRequest,
   type GetAccountRequest,
+  type ListProfilesRequest,
+  type ListProfilesResponse,
   type LoginRequest,
   type LogoutRequest,
   type LogoutResponse,
+  type Profile as ProtoProfile,
   type RefreshTokenRequest,
   type RegisterRequest,
   type ValidateTokenRequest,
@@ -41,6 +50,7 @@ import type { Logger } from '../infra/logger.js';
 
 export interface IdentityServiceDeps {
   accountRepository: AccountRepository;
+  profileRepository: ProfileRepository;
   refreshTokenRepository: RefreshTokenRepository;
   auditLogRepository: AuditLogRepository;
   jwtSecret: string;
@@ -67,6 +77,15 @@ function accountToProto(account: AccountRecord): ProtoAccount {
     email: account.email,
     accountType: accountTypeToProto[account.accountType],
     status: account.status,
+  };
+}
+
+function profileToProto(profile: ProfileRecord): ProtoProfile {
+  return {
+    id: profile.id,
+    accountId: profile.accountId,
+    displayName: profile.displayName,
+    isKidsProfile: profile.isKidsProfile,
   };
 }
 
@@ -221,6 +240,41 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async createProfile(
+      call: ServerUnaryCall<CreateProfileRequest, ProtoProfile>,
+      callback: sendUnaryData<ProtoProfile>,
+    ): Promise<void> {
+      try {
+        const profile = await createProfile(
+          {
+            accountId: call.request.accountId,
+            displayName: call.request.displayName,
+            isKidsProfile: call.request.isKidsProfile,
+          },
+          { accountRepository: deps.accountRepository, profileRepository: deps.profileRepository },
+        );
+        deps.logger.info({ event: 'profile_created', accountId: profile.accountId, profileId: profile.id });
+        callback(null, profileToProto(profile));
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
+
+    async listProfiles(
+      call: ServerUnaryCall<ListProfilesRequest, ListProfilesResponse>,
+      callback: sendUnaryData<ListProfilesResponse>,
+    ): Promise<void> {
+      try {
+        const profiles = await listProfiles(call.request.accountId, {
+          accountRepository: deps.accountRepository,
+          profileRepository: deps.profileRepository,
+        });
+        callback(null, { profiles: profiles.map(profileToProto) });
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -252,6 +306,12 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof InvalidAccessTokenError) {
     return buildServiceError(grpc.status.UNAUTHENTICATED, error.message);
+  }
+  if (error instanceof ProfileLimitExceededError) {
+    return buildServiceError(grpc.status.FAILED_PRECONDITION, error.message);
+  }
+  if (error instanceof InvalidProfileInputError) {
+    return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }

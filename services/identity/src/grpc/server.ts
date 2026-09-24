@@ -2,6 +2,7 @@ import * as grpc from '@grpc/grpc-js';
 import type { PrismaClient } from '@prisma/client';
 import { PrismaAccountRepository } from '../infra/prismaAccountRepository.js';
 import { PrismaAuditLogRepository } from '../infra/prismaAuditLogRepository.js';
+import { PrismaProfileRepository } from '../infra/prismaProfileRepository.js';
 import { PrismaRefreshTokenRepository } from '../infra/prismaRefreshTokenRepository.js';
 import { logger, type Logger } from '../infra/logger.js';
 import { createIdentityServiceImpl } from './identityServiceImpl.js';
@@ -17,6 +18,7 @@ export function buildIdentityServer(prisma: PrismaClient, jwtSecret: string, log
   const server = new grpc.Server();
   const impl = createIdentityServiceImpl({
     accountRepository: new PrismaAccountRepository(prisma),
+    profileRepository: new PrismaProfileRepository(prisma),
     refreshTokenRepository: new PrismaRefreshTokenRepository(prisma),
     auditLogRepository: new PrismaAuditLogRepository(prisma),
     jwtSecret,
