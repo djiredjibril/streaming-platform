@@ -1,0 +1,91 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { AccountNotVerifiedError, AccountSuspendedError, InvalidCredentialsError } from '../../src/domain/errors.js';
+import { loginAccount } from '../../src/domain/loginAccount.js';
+import { registerAccount } from '../../src/domain/registerAccount.js';
+import { verifyAccessToken } from '../../src/domain/tokens.js';
+import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
+import { InMemoryAuditLogRepository } from './fakes/inMemoryAuditLogRepository.js';
+import { InMemoryRefreshTokenRepository } from './fakes/inMemoryRefreshTokenRepository.js';
+
+const JWT_SECRET = 'unit-test-secret';
+const EMAIL = 'jane@example.com';
+const PASSWORD = 'correct-horse-battery';
+
+describe('loginAccount', () => {
+  let accountRepository: InMemoryAccountRepository;
+  let refreshTokenRepository: InMemoryRefreshTokenRepository;
+  let auditLogRepository: InMemoryAuditLogRepository;
+
+  beforeEach(() => {
+    accountRepository = new InMemoryAccountRepository();
+    refreshTokenRepository = new InMemoryRefreshTokenRepository();
+    auditLogRepository = new InMemoryAuditLogRepository();
+  });
+
+  async function registerAndActivate() {
+    const { account, emailVerificationToken } = await registerAccount(
+      { email: EMAIL, password: PASSWORD, accountType: 'PERSO' },
+      { accountRepository },
+    );
+    accountRepository.forceStatus(account.id, 'ACTIVE');
+    void emailVerificationToken;
+    return account;
+  }
+
+  const deps = () => ({ accountRepository, refreshTokenRepository, auditLogRepository, jwtSecret: JWT_SECRET });
+
+  it('issues an access token + refresh token for correct credentials on an ACTIVE account', async () => {
+    const account = await registerAndActivate();
+
+    const result = await loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' }, deps());
+
+    expect(result.account.id).toBe(account.id);
+    expect(result.refreshToken).toMatch(/^[0-9a-f]{64}$/);
+    const payload = await verifyAccessToken(result.accessToken, JWT_SECRET);
+    expect(payload.accountId).toBe(account.id);
+
+    expect(refreshTokenRepository.all).toHaveLength(1);
+    expect(auditLogRepository.events).toContainEqual(
+      expect.objectContaining({ eventType: 'LOGIN_SUCCESS', accountId: account.id }),
+    );
+  });
+
+  it('rejects a wrong password and audits LOGIN_FAILED', async () => {
+    const account = await registerAndActivate();
+
+    await expect(
+      loginAccount({ email: EMAIL, password: 'wrong-password', ipAddress: '127.0.0.1' }, deps()),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+
+    expect(auditLogRepository.events).toContainEqual(
+      expect.objectContaining({ eventType: 'LOGIN_FAILED', accountId: account.id }),
+    );
+  });
+
+  it('rejects an unknown email without revealing that (generic error) and audits with accountId null', async () => {
+    await expect(
+      loginAccount({ email: 'nobody@example.com', password: PASSWORD, ipAddress: '127.0.0.1' }, deps()),
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+
+    expect(auditLogRepository.events).toContainEqual(
+      expect.objectContaining({ eventType: 'LOGIN_FAILED', accountId: null }),
+    );
+  });
+
+  it('rejects a PENDING_VERIFICATION account', async () => {
+    await registerAccount({ email: EMAIL, password: PASSWORD, accountType: 'PERSO' }, { accountRepository });
+
+    await expect(
+      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' }, deps()),
+    ).rejects.toBeInstanceOf(AccountNotVerifiedError);
+  });
+
+  it('rejects a SUSPENDED account', async () => {
+    const account = await registerAndActivate();
+    accountRepository.forceStatus(account.id, 'SUSPENDED');
+
+    await expect(
+      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' }, deps()),
+    ).rejects.toBeInstanceOf(AccountSuspendedError);
+  });
+});

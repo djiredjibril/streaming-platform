@@ -1,4 +1,5 @@
 import type {
+  AccountCredentials,
   AccountRecord,
   AccountRepository,
   CreateAccountInput,
@@ -6,6 +7,7 @@ import type {
 } from '../../../src/domain/accountRepository.js';
 
 interface StoredAccount extends AccountRecord {
+  passwordHash: string | null;
   emailVerificationTokenHash: string | null;
   emailVerificationExpiresAt: Date | null;
 }
@@ -17,14 +19,21 @@ export class InMemoryAccountRepository implements AccountRepository {
 
   async findByEmail(email: string): Promise<AccountRecord | null> {
     for (const account of this.accountsById.values()) {
-      if (account.email === email) return { ...account };
+      if (account.email === email) return toRecord(account);
     }
     return null;
   }
 
   async findById(accountId: string): Promise<AccountRecord | null> {
     const account = this.accountsById.get(accountId);
-    return account ? { ...account } : null;
+    return account ? toRecord(account) : null;
+  }
+
+  async findCredentialsByEmail(email: string): Promise<AccountCredentials | null> {
+    for (const account of this.accountsById.values()) {
+      if (account.email === email) return { ...toRecord(account), passwordHash: account.passwordHash };
+    }
+    return null;
   }
 
   async create(input: CreateAccountInput): Promise<AccountRecord> {
@@ -34,11 +43,12 @@ export class InMemoryAccountRepository implements AccountRepository {
       email: input.email,
       accountType: input.accountType,
       status: 'PENDING_VERIFICATION',
+      passwordHash: input.passwordHash,
       emailVerificationTokenHash: input.emailVerificationTokenHash,
       emailVerificationExpiresAt: input.emailVerificationExpiresAt,
     };
     this.accountsById.set(record.id, record);
-    return { ...record };
+    return toRecord(record);
   }
 
   async findPendingVerificationByTokenHash(tokenHash: string): Promise<PendingVerification | null> {
@@ -51,11 +61,25 @@ export class InMemoryAccountRepository implements AccountRepository {
   }
 
   async activateAccount(accountId: string): Promise<AccountRecord> {
-    const account = this.accountsById.get(accountId);
-    if (!account) throw new Error(`No account ${accountId}`);
+    const account = this.mustGet(accountId);
     account.status = 'ACTIVE';
     account.emailVerificationTokenHash = null;
     account.emailVerificationExpiresAt = null;
-    return { ...account };
+    return toRecord(account);
   }
+
+  /** Test-only helper: bypasses verifyEmail to set a status directly (e.g. simulating a SUSPENDED account for loginAccount tests). */
+  forceStatus(accountId: string, status: AccountRecord['status']): void {
+    this.mustGet(accountId).status = status;
+  }
+
+  private mustGet(accountId: string): StoredAccount {
+    const account = this.accountsById.get(accountId);
+    if (!account) throw new Error(`No account ${accountId}`);
+    return account;
+  }
+}
+
+function toRecord(account: StoredAccount): AccountRecord {
+  return { id: account.id, email: account.email, accountType: account.accountType, status: account.status };
 }

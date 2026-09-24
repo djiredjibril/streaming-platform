@@ -35,7 +35,7 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     });
 
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    server = buildIdentityServer(prisma, logger);
+    server = buildIdentityServer(prisma, 'test-jwt-secret', logger);
     const port = await startIdentityServer(server, '127.0.0.1:0');
     client = new IdentityServiceClient(`127.0.0.1:${port}`, grpc.credentials.createInsecure());
   }, 60_000);
@@ -59,6 +59,15 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
   function verifyEmail(token: string) {
     return new Promise<AuthResponse>((resolve, reject) => {
       client.verifyEmail({ token }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
+  function login(request: Parameters<IdentityServiceClient['login']>[0]) {
+    return new Promise<AuthResponse>((resolve, reject) => {
+      client.login(request, (error, response) => {
         if (error) reject(error);
         else resolve(response!);
       });
@@ -100,6 +109,44 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
   it('verifyEmail rejects an unknown token', async () => {
     await expect(verifyEmail('deadbeef'.repeat(8))).rejects.toMatchObject({
       code: grpc.status.INVALID_ARGUMENT,
+    });
+  });
+
+  const password = 'correct-horse-battery';
+
+  it('login issues an access token + refresh token now that the account is ACTIVE', async () => {
+    const response = await login({ email, password });
+
+    expect(response.account?.status).toBe('ACTIVE');
+    expect(response.accessToken).toBeTruthy();
+    expect(response.refreshToken).toBeTruthy();
+
+    const tokens = await prisma.refreshToken.findMany({ where: { account: { email } } });
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]!.tokenHash).not.toBe(response.refreshToken);
+  });
+
+  it('login rejects a wrong password and records a LOGIN_FAILED audit event', async () => {
+    await expect(login({ email, password: 'wrong-password' })).rejects.toMatchObject({
+      code: grpc.status.UNAUTHENTICATED,
+    });
+
+    const events = await prisma.auditLog.findMany({
+      where: { account: { email } },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(events.some((e) => e.eventType === 'LOGIN_FAILED')).toBe(true);
+  });
+
+  it('login rejects a still-pending account', async () => {
+    await register({
+      email: 'never-verified@example.com',
+      password,
+      accountType: AccountType.PERSO,
+    });
+
+    await expect(login({ email: 'never-verified@example.com', password })).rejects.toMatchObject({
+      code: grpc.status.FAILED_PRECONDITION,
     });
   });
 });
