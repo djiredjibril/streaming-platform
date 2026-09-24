@@ -9,14 +9,17 @@ import { createProfile } from '../../src/domain/createProfile.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
 import { InMemoryProfileRepository } from './fakes/inMemoryProfileRepository.js';
+import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
 
 describe('createProfile', () => {
   let accountRepository: InMemoryAccountRepository;
   let profileRepository: InMemoryProfileRepository;
+  let rateLimiter: InMemoryRateLimiter;
 
   beforeEach(() => {
     accountRepository = new InMemoryAccountRepository();
     profileRepository = new InMemoryProfileRepository();
+    rateLimiter = new InMemoryRateLimiter();
   });
 
   async function activeAccount(accountType: 'PERSO' | 'FAMILLE' | 'ETUDIANT') {
@@ -27,7 +30,8 @@ describe('createProfile', () => {
         accountType,
         universityEmail: accountType === 'ETUDIANT' ? 'jane@university.edu' : undefined,
       },
-      { accountRepository },
+      '127.0.0.1',
+      { accountRepository, rateLimiter },
     );
     accountRepository.forceStatus(account.id, 'ACTIVE');
     return account;
@@ -91,7 +95,8 @@ describe('createProfile', () => {
   it('rejects a PENDING_VERIFICATION account', async () => {
     const { account } = await registerAccount(
       { email: 'pending@example.com', password: 'correct-horse', accountType: 'PERSO' },
-      { accountRepository },
+      '127.0.0.1',
+      { accountRepository, rateLimiter },
     );
 
     await expect(

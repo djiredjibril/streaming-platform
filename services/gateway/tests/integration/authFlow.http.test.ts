@@ -1,25 +1,33 @@
 import { execFileSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { PrismaClient } from '@prisma/client';
 import * as grpc from '@grpc/grpc-js';
+import type { Redis as RedisClient } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // Test-only dependency on @streaming/identity: spins up the real Identity
 // gRPC server instead of mocking it, so this test exercises the full
 // HTTP -> gRPC -> Postgres chain. See services/gateway/README.md.
 import { buildIdentityServer, startIdentityServer } from '@streaming/identity/dist/grpc/server.js';
+import { createRedisClient } from '@streaming/identity/dist/infra/redisClient.js';
 import { createIdentityClient } from '../../src/grpc/identityClient.js';
 import { buildGatewayServer } from '../../src/http/server.js';
 import { logger } from '../../src/infra/logger.js';
 
-describe('Gateway /auth/* (real Identity gRPC server + real Postgres)', () => {
-  let container: StartedPostgreSqlContainer;
+describe('Gateway /auth/* (real Identity gRPC server + real Postgres + real Redis)', () => {
+  let pgContainer: StartedPostgreSqlContainer;
+  let redisContainer: StartedRedisContainer;
   let prisma: PrismaClient;
+  let redis: RedisClient;
   let identityServer: grpc.Server;
   let app: ReturnType<typeof buildGatewayServer>;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start();
-    const databaseUrl = container.getConnectionUri();
+    [pgContainer, redisContainer] = await Promise.all([
+      new PostgreSqlContainer('postgres:16-alpine').start(),
+      new RedisContainer('redis:7-alpine').start(),
+    ]);
+    const databaseUrl = pgContainer.getConnectionUri();
 
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
       cwd: new URL('../../../identity/', import.meta.url),
@@ -28,7 +36,8 @@ describe('Gateway /auth/* (real Identity gRPC server + real Postgres)', () => {
     });
 
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    identityServer = buildIdentityServer(prisma, 'test-jwt-secret');
+    redis = createRedisClient(redisContainer.getConnectionUrl());
+    identityServer = buildIdentityServer(prisma, 'test-jwt-secret', redis);
     const identityPort = await startIdentityServer(identityServer, '127.0.0.1:0');
 
     const identityClient = createIdentityClient(`127.0.0.1:${identityPort}`);
@@ -39,7 +48,9 @@ describe('Gateway /auth/* (real Identity gRPC server + real Postgres)', () => {
     await app.close();
     await new Promise<void>((resolve) => identityServer.tryShutdown(() => resolve()));
     await prisma.$disconnect();
-    await container.stop();
+    redis.disconnect();
+    await pgContainer.stop();
+    await redisContainer.stop();
   });
 
   describe('POST /auth/register', () => {

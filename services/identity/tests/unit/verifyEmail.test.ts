@@ -3,18 +3,24 @@ import { InvalidOrExpiredTokenError } from '../../src/domain/errors.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
 import { verifyEmail } from '../../src/domain/verifyEmail.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
+import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
+
+const IP = '127.0.0.1';
 
 describe('verifyEmail', () => {
   let accountRepository: InMemoryAccountRepository;
+  let rateLimiter: InMemoryRateLimiter;
 
   beforeEach(() => {
     accountRepository = new InMemoryAccountRepository();
+    rateLimiter = new InMemoryRateLimiter();
   });
 
   it('activates the account when the token matches', async () => {
     const { emailVerificationToken } = await registerAccount(
       { email: 'jane@example.com', password: 'correct-horse', accountType: 'PERSO' },
-      { accountRepository },
+      IP,
+      { accountRepository, rateLimiter },
     );
 
     const account = await verifyEmail(emailVerificationToken, { accountRepository });
@@ -33,7 +39,8 @@ describe('verifyEmail', () => {
     try {
       const { emailVerificationToken } = await registerAccount(
         { email: 'jane@example.com', password: 'correct-horse', accountType: 'PERSO' },
-        { accountRepository },
+        IP,
+        { accountRepository, rateLimiter },
       );
 
       vi.advanceTimersByTime(25 * 60 * 60 * 1000); // > 24h TTL
@@ -49,7 +56,8 @@ describe('verifyEmail', () => {
   it('rejects reusing a token after the account is already active', async () => {
     const { emailVerificationToken } = await registerAccount(
       { email: 'jane@example.com', password: 'correct-horse', accountType: 'PERSO' },
-      { accountRepository },
+      IP,
+      { accountRepository, rateLimiter },
     );
 
     await verifyEmail(emailVerificationToken, { accountRepository });

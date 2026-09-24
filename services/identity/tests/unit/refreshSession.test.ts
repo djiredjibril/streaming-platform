@@ -5,21 +5,25 @@ import { refreshSession } from '../../src/domain/refreshSession.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
 import { InMemoryAuditLogRepository } from './fakes/inMemoryAuditLogRepository.js';
+import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
 import { InMemoryRefreshTokenRepository } from './fakes/inMemoryRefreshTokenRepository.js';
 
 const JWT_SECRET = 'unit-test-secret';
 const EMAIL = 'jane@example.com';
 const PASSWORD = 'correct-horse-battery';
+const IP = '127.0.0.1';
 
 describe('refreshSession', () => {
   let accountRepository: InMemoryAccountRepository;
   let refreshTokenRepository: InMemoryRefreshTokenRepository;
   let auditLogRepository: InMemoryAuditLogRepository;
+  let rateLimiter: InMemoryRateLimiter;
 
   beforeEach(() => {
     accountRepository = new InMemoryAccountRepository();
     refreshTokenRepository = new InMemoryRefreshTokenRepository();
     auditLogRepository = new InMemoryAuditLogRepository();
+    rateLimiter = new InMemoryRateLimiter();
   });
 
   const deps = () => ({
@@ -27,17 +31,19 @@ describe('refreshSession', () => {
     refreshTokenRepository,
     auditLogRepository,
     jwtSecret: JWT_SECRET,
-    ipAddress: '127.0.0.1',
+    ipAddress: IP,
   });
 
   async function loginActiveAccount() {
-    const { account } = await registerAccount({ email: EMAIL, password: PASSWORD, accountType: 'PERSO' }, {
-      accountRepository,
-    });
+    const { account } = await registerAccount(
+      { email: EMAIL, password: PASSWORD, accountType: 'PERSO' },
+      IP,
+      { accountRepository, rateLimiter },
+    );
     accountRepository.forceStatus(account.id, 'ACTIVE');
     return loginAccount(
-      { email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' },
-      { accountRepository, refreshTokenRepository, auditLogRepository, jwtSecret: JWT_SECRET },
+      { email: EMAIL, password: PASSWORD, ipAddress: IP },
+      { accountRepository, refreshTokenRepository, auditLogRepository, rateLimiter, jwtSecret: JWT_SECRET },
     );
   }
 

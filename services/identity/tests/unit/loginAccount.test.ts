@@ -5,39 +5,50 @@ import { registerAccount } from '../../src/domain/registerAccount.js';
 import { verifyAccessToken } from '../../src/domain/tokens.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
 import { InMemoryAuditLogRepository } from './fakes/inMemoryAuditLogRepository.js';
+import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
 import { InMemoryRefreshTokenRepository } from './fakes/inMemoryRefreshTokenRepository.js';
 
 const JWT_SECRET = 'unit-test-secret';
 const EMAIL = 'jane@example.com';
 const PASSWORD = 'correct-horse-battery';
+const IP = '127.0.0.1';
 
 describe('loginAccount', () => {
   let accountRepository: InMemoryAccountRepository;
   let refreshTokenRepository: InMemoryRefreshTokenRepository;
   let auditLogRepository: InMemoryAuditLogRepository;
+  let rateLimiter: InMemoryRateLimiter;
 
   beforeEach(() => {
     accountRepository = new InMemoryAccountRepository();
     refreshTokenRepository = new InMemoryRefreshTokenRepository();
     auditLogRepository = new InMemoryAuditLogRepository();
+    rateLimiter = new InMemoryRateLimiter();
   });
 
   async function registerAndActivate() {
     const { account, emailVerificationToken } = await registerAccount(
       { email: EMAIL, password: PASSWORD, accountType: 'PERSO' },
-      { accountRepository },
+      IP,
+      { accountRepository, rateLimiter },
     );
     accountRepository.forceStatus(account.id, 'ACTIVE');
     void emailVerificationToken;
     return account;
   }
 
-  const deps = () => ({ accountRepository, refreshTokenRepository, auditLogRepository, jwtSecret: JWT_SECRET });
+  const deps = () => ({
+    accountRepository,
+    refreshTokenRepository,
+    auditLogRepository,
+    rateLimiter,
+    jwtSecret: JWT_SECRET,
+  });
 
   it('issues an access token + refresh token for correct credentials on an ACTIVE account', async () => {
     const account = await registerAndActivate();
 
-    const result = await loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' }, deps());
+    const result = await loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: IP }, deps());
 
     expect(result.account.id).toBe(account.id);
     expect(result.refreshToken).toMatch(/^[0-9a-f]{64}$/);
@@ -54,7 +65,7 @@ describe('loginAccount', () => {
     const account = await registerAndActivate();
 
     await expect(
-      loginAccount({ email: EMAIL, password: 'wrong-password', ipAddress: '127.0.0.1' }, deps()),
+      loginAccount({ email: EMAIL, password: 'wrong-password', ipAddress: IP }, deps()),
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
 
     expect(auditLogRepository.events).toContainEqual(
@@ -64,7 +75,7 @@ describe('loginAccount', () => {
 
   it('rejects an unknown email without revealing that (generic error) and audits with accountId null', async () => {
     await expect(
-      loginAccount({ email: 'nobody@example.com', password: PASSWORD, ipAddress: '127.0.0.1' }, deps()),
+      loginAccount({ email: 'nobody@example.com', password: PASSWORD, ipAddress: IP }, deps()),
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
 
     expect(auditLogRepository.events).toContainEqual(
@@ -73,10 +84,13 @@ describe('loginAccount', () => {
   });
 
   it('rejects a PENDING_VERIFICATION account', async () => {
-    await registerAccount({ email: EMAIL, password: PASSWORD, accountType: 'PERSO' }, { accountRepository });
+    await registerAccount({ email: EMAIL, password: PASSWORD, accountType: 'PERSO' }, IP, {
+      accountRepository,
+      rateLimiter,
+    });
 
     await expect(
-      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' }, deps()),
+      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: IP }, deps()),
     ).rejects.toBeInstanceOf(AccountNotVerifiedError);
   });
 
@@ -85,7 +99,7 @@ describe('loginAccount', () => {
     accountRepository.forceStatus(account.id, 'SUSPENDED');
 
     await expect(
-      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: '127.0.0.1' }, deps()),
+      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: IP }, deps()),
     ).rejects.toBeInstanceOf(AccountSuspendedError);
   });
 });

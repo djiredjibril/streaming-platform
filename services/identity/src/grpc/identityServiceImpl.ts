@@ -3,6 +3,7 @@ import type { ServerUnaryCall, sendUnaryData } from '@grpc/grpc-js';
 import type { AccountRecord, AccountRepository } from '../domain/accountRepository.js';
 import type { AuditLogRepository } from '../domain/auditLogRepository.js';
 import type { ProfileRecord, ProfileRepository } from '../domain/profileRepository.js';
+import type { RateLimiter } from '../domain/rateLimiter.js';
 import type { RefreshTokenRepository } from '../domain/refreshTokenRepository.js';
 import {
   AccountNotFoundError,
@@ -16,6 +17,7 @@ import {
   InvalidRefreshTokenError,
   InvalidRegisterInputError,
   ProfileLimitExceededError,
+  RateLimitExceededError,
   RefreshTokenReuseDetectedError,
 } from '../domain/errors.js';
 import { createProfile } from '../domain/createProfile.js';
@@ -53,6 +55,7 @@ export interface IdentityServiceDeps {
   profileRepository: ProfileRepository;
   refreshTokenRepository: RefreshTokenRepository;
   auditLogRepository: AuditLogRepository;
+  rateLimiter: RateLimiter;
   jwtSecret: string;
   logger: Logger;
 }
@@ -119,7 +122,8 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
             accountType: accountTypeToDomain[call.request.accountType],
             universityEmail: call.request.universityEmail,
           },
-          { accountRepository: deps.accountRepository },
+          getClientIp(call),
+          { accountRepository: deps.accountRepository, rateLimiter: deps.rateLimiter },
         );
 
         deps.logger.info({ event: 'account_created', accountId: account.id });
@@ -155,6 +159,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
             accountRepository: deps.accountRepository,
             refreshTokenRepository: deps.refreshTokenRepository,
             auditLogRepository: deps.auditLogRepository,
+            rateLimiter: deps.rateLimiter,
             jwtSecret: deps.jwtSecret,
           },
         );
@@ -312,6 +317,9 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof InvalidProfileInputError) {
     return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
+  }
+  if (error instanceof RateLimitExceededError) {
+    return buildServiceError(grpc.status.RESOURCE_EXHAUSTED, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }

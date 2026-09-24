@@ -1,9 +1,12 @@
 import * as grpc from '@grpc/grpc-js';
 import { execFileSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { PrismaClient } from '@prisma/client';
+import type { Redis as RedisClient } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildIdentityServer, startIdentityServer } from '../../src/grpc/server.js';
+import { createRedisClient } from '../../src/infra/redisClient.js';
 import {
   AccountType,
   IdentityServiceClient,
@@ -11,15 +14,20 @@ import {
 } from '../../src/grpc/generated/identity.js';
 import { logger } from '../../src/infra/logger.js';
 
-describe('IdentityService.Register (real Postgres + gRPC)', () => {
-  let container: StartedPostgreSqlContainer;
+describe('IdentityService.Register (real Postgres + Redis + gRPC)', () => {
+  let pgContainer: StartedPostgreSqlContainer;
+  let redisContainer: StartedRedisContainer;
   let prisma: PrismaClient;
+  let redis: RedisClient;
   let server: grpc.Server;
   let client: IdentityServiceClient;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start();
-    const databaseUrl = container.getConnectionUri();
+    [pgContainer, redisContainer] = await Promise.all([
+      new PostgreSqlContainer('postgres:16-alpine').start(),
+      new RedisContainer('redis:7-alpine').start(),
+    ]);
+    const databaseUrl = pgContainer.getConnectionUri();
 
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
       cwd: new URL('../../', import.meta.url),
@@ -28,7 +36,8 @@ describe('IdentityService.Register (real Postgres + gRPC)', () => {
     });
 
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-    server = buildIdentityServer(prisma, 'test-jwt-secret', logger);
+    redis = createRedisClient(redisContainer.getConnectionUrl());
+    server = buildIdentityServer(prisma, 'test-jwt-secret', redis, logger);
     const port = await startIdentityServer(server, '127.0.0.1:0');
     client = new IdentityServiceClient(`127.0.0.1:${port}`, grpc.credentials.createInsecure());
   }, 60_000);
@@ -37,7 +46,9 @@ describe('IdentityService.Register (real Postgres + gRPC)', () => {
     client.close();
     await new Promise<void>((resolve) => server.tryShutdown(() => resolve()));
     await prisma.$disconnect();
-    await container.stop();
+    redis.disconnect();
+    await pgContainer.stop();
+    await redisContainer.stop();
   });
 
   function register(request: Parameters<IdentityServiceClient['register']>[0]) {

@@ -3,18 +3,24 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { EmailAlreadyRegisteredError, InvalidRegisterInputError } from '../../src/domain/errors.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
+import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
+
+const IP = '127.0.0.1';
 
 describe('registerAccount', () => {
   let accountRepository: InMemoryAccountRepository;
+  let rateLimiter: InMemoryRateLimiter;
 
   beforeEach(() => {
     accountRepository = new InMemoryAccountRepository();
+    rateLimiter = new InMemoryRateLimiter();
   });
 
   it('creates a pending_verification account with an argon2id password hash and a verification token', async () => {
     const { account, emailVerificationToken } = await registerAccount(
       { email: 'Jane@Example.com', password: 'correct-horse', accountType: 'PERSO' },
-      { accountRepository },
+      IP,
+      { accountRepository, rateLimiter },
     );
 
     expect(account.status).toBe('PENDING_VERIFICATION');
@@ -32,7 +38,8 @@ describe('registerAccount', () => {
     await expect(
       registerAccount(
         { email: 'not-an-email', password: 'correct-horse', accountType: 'PERSO' },
-        { accountRepository },
+        IP,
+        { accountRepository, rateLimiter },
       ),
     ).rejects.toBeInstanceOf(InvalidRegisterInputError);
   });
@@ -41,7 +48,8 @@ describe('registerAccount', () => {
     await expect(
       registerAccount(
         { email: 'jane@example.com', password: 'short', accountType: 'PERSO' },
-        { accountRepository },
+        IP,
+        { accountRepository, rateLimiter },
       ),
     ).rejects.toBeInstanceOf(InvalidRegisterInputError);
   });
@@ -50,7 +58,8 @@ describe('registerAccount', () => {
     await expect(
       registerAccount(
         { email: 'jane@example.com', password: 'correct-horse', accountType: 'ETUDIANT' },
-        { accountRepository },
+        IP,
+        { accountRepository, rateLimiter },
       ),
     ).rejects.toBeInstanceOf(InvalidRegisterInputError);
   });
@@ -63,7 +72,8 @@ describe('registerAccount', () => {
         accountType: 'ETUDIANT',
         universityEmail: 'jane@university.edu',
       },
-      { accountRepository },
+      IP,
+      { accountRepository, rateLimiter },
     );
 
     expect(account.status).toBe('PENDING_VERIFICATION');
@@ -73,13 +83,15 @@ describe('registerAccount', () => {
   it('rejects a duplicate email', async () => {
     await registerAccount(
       { email: 'jane@example.com', password: 'correct-horse', accountType: 'PERSO' },
-      { accountRepository },
+      IP,
+      { accountRepository, rateLimiter },
     );
 
     await expect(
       registerAccount(
         { email: 'jane@example.com', password: 'another-password', accountType: 'PERSO' },
-        { accountRepository },
+        IP,
+        { accountRepository, rateLimiter },
       ),
     ).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
   });
