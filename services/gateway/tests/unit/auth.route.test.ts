@@ -125,6 +125,21 @@ describe('POST /auth/register', () => {
     expect(res.statusCode).toBe(500);
     expect(res.json()).toEqual({ error: 'Internal error' });
   });
+
+  it('maps RESOURCE_EXHAUSTED (rate limited) to 429', async () => {
+    const identityClient = fakeIdentityClient({
+      register: () => ({ error: serviceError(grpc.status.RESOURCE_EXHAUSTED, 'Too many attempts; retry in 3600 seconds') }),
+    });
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'jane@example.com', password: 'correct-horse', accountType: 'PERSO' },
+    });
+
+    expect(res.statusCode).toBe(429);
+  });
 });
 
 describe('POST /auth/verify-email', () => {

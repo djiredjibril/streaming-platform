@@ -229,4 +229,31 @@ describe('Gateway /auth/* (real Identity gRPC server + real Postgres + real Redi
       expect(refreshAfterLogout.statusCode).toBe(401);
     });
   });
+
+  describe('rate limiting', () => {
+    // `remoteAddress` isolates this block's budget from every other test's
+    // (all of which share Fastify inject's default 127.0.0.1) — same
+    // reasoning as the x-client-ip-per-test approach in Identity's own
+    // authFlow.grpc.test.ts, just at the HTTP layer instead of gRPC metadata.
+    it('the 6th register attempt from the same IP returns 429', async () => {
+      const remoteAddress = '203.0.113.30';
+      for (let i = 0; i < 5; i++) {
+        const res = await app.inject({
+          method: 'POST',
+          url: '/auth/register',
+          remoteAddress,
+          payload: { email: `gwratelimit${i}@example.com`, password: 'correct-horse-battery', accountType: 'PERSO' },
+        });
+        expect(res.statusCode).toBe(200);
+      }
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        remoteAddress,
+        payload: { email: 'gwratelimit5@example.com', password: 'correct-horse-battery', accountType: 'PERSO' },
+      });
+      expect(res.statusCode).toBe(429);
+    });
+  });
 });
