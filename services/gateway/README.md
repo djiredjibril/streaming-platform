@@ -15,7 +15,7 @@ Le contrat REST complet est documenté dans `docs/01-identity.md`, section "Endp
 - `POST /auth/profiles` `{displayName, isKidsProfile}` (Bearer requis) → `CreateProfile`
 - `GET /auth/profiles` (Bearer requis) → `ListProfiles`
 
-`login`/`refresh` transmettent aussi l'IP réelle du client en métadonnée gRPC `x-client-ip` (`clientIpMetadata()`) pour que l'`AuditLog` d'Identity reflète le vrai client plutôt que l'adresse de la Gateway.
+`login`/`refresh`/`register` transmettent aussi l'IP réelle du client en métadonnée gRPC `x-client-ip` (`clientIpMetadata()`) pour que l'`AuditLog` et le rate limiter d'Identity reflètent le vrai client plutôt que l'adresse de la Gateway. `mapGrpcError` traduit un `RESOURCE_EXHAUSTED` (limite dépassée) en `429`.
 
 **`/auth/profiles` n'accepte jamais d'`accountId` du client** — il est dérivé du token via `requireAccountId()` (Bearer → `ValidateToken` → `accountId`), la même logique que `/auth/me`, extraite en helper partagé. Accepter un `accountId` du corps de la requête permettrait à n'importe quel compte authentifié de créer/lister des profils sur le compte de quelqu'un d'autre (IDOR) — voir le test "n'accepte jamais d'accountId du client" dans `tests/integration/authFlow.http.test.ts`.
 

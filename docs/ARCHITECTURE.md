@@ -57,6 +57,7 @@ Chaque route de la Gateway convertit un code gRPC en code HTTP via une unique fo
 | `UNAUTHENTICATED` | 401 | Mauvais mot de passe, refresh token invalide/réutilisé |
 | `FAILED_PRECONDITION` / `PERMISSION_DENIED` | 403 | Compte non vérifié / suspendu |
 | `NOT_FOUND` | 404 | Compte inexistant |
+| `RESOURCE_EXHAUSTED` | 429 | Rate limit dépassé (`Login`/`Register` par IP — voir `services/identity/README.md`) |
 | tout le reste | 500, message générique | Erreur interne — le détail est loggé serveur, jamais renvoyé au client (`services/AGENT.md` §8) |
 
 Côté Identity, le mapping symétrique (erreur domaine → code gRPC) vit dans `services/identity/src/grpc/identityServiceImpl.ts`, fonction `toGrpcError()`.
