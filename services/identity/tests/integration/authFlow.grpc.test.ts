@@ -74,6 +74,24 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     });
   }
 
+  function refreshToken(token: string) {
+    return new Promise<AuthResponse>((resolve, reject) => {
+      client.refreshToken({ refreshToken: token }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
+  function logout(token: string) {
+    return new Promise<{ success: boolean }>((resolve, reject) => {
+      client.logout({ refreshToken: token }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
   const email = 'flow@example.com';
   let emailVerificationToken: string;
 
@@ -113,6 +131,7 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
   });
 
   const password = 'correct-horse-battery';
+  let currentRefreshToken: string;
 
   it('login issues an access token + refresh token now that the account is ACTIVE', async () => {
     const response = await login({ email, password });
@@ -120,6 +139,7 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     expect(response.account?.status).toBe('ACTIVE');
     expect(response.accessToken).toBeTruthy();
     expect(response.refreshToken).toBeTruthy();
+    currentRefreshToken = response.refreshToken;
 
     const tokens = await prisma.refreshToken.findMany({ where: { account: { email } } });
     expect(tokens).toHaveLength(1);
@@ -148,5 +168,49 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     await expect(login({ email: 'never-verified@example.com', password })).rejects.toMatchObject({
       code: grpc.status.FAILED_PRECONDITION,
     });
+  });
+
+  it('refreshToken rotates: old token revoked, new one issued', async () => {
+    const response = await refreshToken(currentRefreshToken);
+
+    expect(response.accessToken).toBeTruthy();
+    expect(response.refreshToken).not.toBe(currentRefreshToken);
+
+    const tokens = await prisma.refreshToken.findMany({ where: { account: { email } } });
+    expect(tokens).toHaveLength(2);
+    expect(tokens.filter((t) => t.revokedAt)).toHaveLength(1);
+
+    currentRefreshToken = response.refreshToken;
+  });
+
+  it('reusing the just-rotated (now revoked) token is detected as theft', async () => {
+    await refreshToken(currentRefreshToken); // rotates it once -> currentRefreshToken is now revoked
+
+    await expect(refreshToken(currentRefreshToken)).rejects.toMatchObject({
+      code: grpc.status.UNAUTHENTICATED,
+    });
+
+    const tokens = await prisma.refreshToken.findMany({ where: { account: { email } } });
+    expect(tokens.every((t) => t.revokedAt)).toBe(true);
+
+    const events = await prisma.auditLog.findMany({ where: { account: { email }, eventType: 'TOKEN_REVOKED' } });
+    expect(events.length).toBeGreaterThan(0);
+  });
+
+  it('login again to get a fresh session for the logout test', async () => {
+    const response = await login({ email, password });
+    currentRefreshToken = response.refreshToken;
+  });
+
+  it('logout revokes the refresh token', async () => {
+    await expect(logout(currentRefreshToken)).resolves.toMatchObject({ success: true });
+
+    await expect(refreshToken(currentRefreshToken)).rejects.toMatchObject({
+      code: grpc.status.UNAUTHENTICATED,
+    });
+  });
+
+  it('logout is idempotent for an unknown token', async () => {
+    await expect(logout('never-issued-token')).resolves.toMatchObject({ success: true });
   });
 });
