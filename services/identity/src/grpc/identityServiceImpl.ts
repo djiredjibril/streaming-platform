@@ -8,26 +8,32 @@ import {
   AccountNotVerifiedError,
   AccountSuspendedError,
   EmailAlreadyRegisteredError,
+  InvalidAccessTokenError,
   InvalidCredentialsError,
   InvalidOrExpiredTokenError,
   InvalidRefreshTokenError,
   InvalidRegisterInputError,
   RefreshTokenReuseDetectedError,
 } from '../domain/errors.js';
+import { getAccount } from '../domain/getAccount.js';
 import { loginAccount } from '../domain/loginAccount.js';
 import { logoutAccount } from '../domain/logoutAccount.js';
 import { refreshSession } from '../domain/refreshSession.js';
 import { registerAccount } from '../domain/registerAccount.js';
+import { validateAccessToken } from '../domain/validateAccessToken.js';
 import { verifyEmail } from '../domain/verifyEmail.js';
 import {
   AccountType,
   type Account as ProtoAccount,
   type AuthResponse,
+  type GetAccountRequest,
   type LoginRequest,
   type LogoutRequest,
   type LogoutResponse,
   type RefreshTokenRequest,
   type RegisterRequest,
+  type ValidateTokenRequest,
+  type ValidateTokenResponse,
   type VerifyEmailRequest,
 } from './generated/identity.js';
 import { getClientIp } from './clientIp.js';
@@ -187,6 +193,34 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async validateToken(
+      call: ServerUnaryCall<ValidateTokenRequest, ValidateTokenResponse>,
+      callback: sendUnaryData<ValidateTokenResponse>,
+    ): Promise<void> {
+      try {
+        const { accountId } = await validateAccessToken(call.request.accessToken, deps.jwtSecret);
+        callback(null, { valid: true, accountId });
+      } catch (error) {
+        if (error instanceof InvalidAccessTokenError) {
+          callback(null, { valid: false, accountId: '' });
+          return;
+        }
+        callback(toGrpcError(error), null);
+      }
+    },
+
+    async getAccount(
+      call: ServerUnaryCall<GetAccountRequest, ProtoAccount>,
+      callback: sendUnaryData<ProtoAccount>,
+    ): Promise<void> {
+      try {
+        const account = await getAccount(call.request.accountId, deps.accountRepository);
+        callback(null, accountToProto(account));
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -215,6 +249,9 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof AccountNotFoundError) {
     return buildServiceError(grpc.status.NOT_FOUND, error.message);
+  }
+  if (error instanceof InvalidAccessTokenError) {
+    return buildServiceError(grpc.status.UNAUTHENTICATED, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }
