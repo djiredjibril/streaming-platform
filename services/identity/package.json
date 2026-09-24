@@ -18,11 +18,13 @@
     "@prisma/client": "^5.22.0",
     "@streaming/shared-logging": "*",
     "argon2": "^0.41.1",
+    "ioredis": "^5.4.1",
     "jose": "^5.9.6",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.13.2",
+    "@testcontainers/redis": "^10.13.2",
     "dotenv-cli": "^7.4.4",
     "prisma": "^5.22.0",
     "ts-proto": "^2.2.7"
