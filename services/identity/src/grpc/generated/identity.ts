@@ -133,6 +133,27 @@ export interface GetAccountRequest {
   accountId: string;
 }
 
+export interface Profile {
+  id: string;
+  accountId: string;
+  displayName: string;
+  isKidsProfile: boolean;
+}
+
+export interface CreateProfileRequest {
+  accountId: string;
+  displayName: string;
+  isKidsProfile: boolean;
+}
+
+export interface ListProfilesRequest {
+  accountId: string;
+}
+
+export interface ListProfilesResponse {
+  profiles: Profile[];
+}
+
 function createBaseRegisterRequest(): RegisterRequest {
   return { email: "", password: "", accountType: 0, universityEmail: undefined };
 }
@@ -1130,6 +1151,390 @@ export const GetAccountRequest: MessageFns<GetAccountRequest> = {
   },
 };
 
+function createBaseProfile(): Profile {
+  return { id: "", accountId: "", displayName: "", isKidsProfile: false };
+}
+
+export const Profile: MessageFns<Profile> = {
+  encode(message: Profile, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    if (message.accountId !== "") {
+      writer.uint32(18).string(message.accountId);
+    }
+    if (message.displayName !== "") {
+      writer.uint32(26).string(message.displayName);
+    }
+    if (message.isKidsProfile !== false) {
+      writer.uint32(32).bool(message.isKidsProfile);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Profile {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseProfile();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.accountId = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.displayName = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.isKidsProfile = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): Profile {
+    return {
+      id: isSet(object.id) ? globalThis.String(object.id) : "",
+      accountId: isSet(object.accountId)
+        ? globalThis.String(object.accountId)
+        : isSet(object.account_id)
+        ? globalThis.String(object.account_id)
+        : "",
+      displayName: isSet(object.displayName)
+        ? globalThis.String(object.displayName)
+        : isSet(object.display_name)
+        ? globalThis.String(object.display_name)
+        : "",
+      isKidsProfile: isSet(object.isKidsProfile)
+        ? globalThis.Boolean(object.isKidsProfile)
+        : isSet(object.is_kids_profile)
+        ? globalThis.Boolean(object.is_kids_profile)
+        : false,
+    };
+  },
+
+  toJSON(message: Profile): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    if (message.accountId !== "") {
+      obj.accountId = message.accountId;
+    }
+    if (message.displayName !== "") {
+      obj.displayName = message.displayName;
+    }
+    if (message.isKidsProfile !== false) {
+      obj.isKidsProfile = message.isKidsProfile;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Profile>, I>>(base?: I): Profile {
+    return Profile.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Profile>, I>>(object: I): Profile {
+    const message = createBaseProfile();
+    message.id = object.id ?? "";
+    message.accountId = object.accountId ?? "";
+    message.displayName = object.displayName ?? "";
+    message.isKidsProfile = object.isKidsProfile ?? false;
+    return message;
+  },
+};
+
+function createBaseCreateProfileRequest(): CreateProfileRequest {
+  return { accountId: "", displayName: "", isKidsProfile: false };
+}
+
+export const CreateProfileRequest: MessageFns<CreateProfileRequest> = {
+  encode(message: CreateProfileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.accountId !== "") {
+      writer.uint32(10).string(message.accountId);
+    }
+    if (message.displayName !== "") {
+      writer.uint32(18).string(message.displayName);
+    }
+    if (message.isKidsProfile !== false) {
+      writer.uint32(24).bool(message.isKidsProfile);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CreateProfileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseCreateProfileRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.accountId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.displayName = reader.string();
+            continue;
+          }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.isKidsProfile = reader.bool();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): CreateProfileRequest {
+    return {
+      accountId: isSet(object.accountId)
+        ? globalThis.String(object.accountId)
+        : isSet(object.account_id)
+        ? globalThis.String(object.account_id)
+        : "",
+      displayName: isSet(object.displayName)
+        ? globalThis.String(object.displayName)
+        : isSet(object.display_name)
+        ? globalThis.String(object.display_name)
+        : "",
+      isKidsProfile: isSet(object.isKidsProfile)
+        ? globalThis.Boolean(object.isKidsProfile)
+        : isSet(object.is_kids_profile)
+        ? globalThis.Boolean(object.is_kids_profile)
+        : false,
+    };
+  },
+
+  toJSON(message: CreateProfileRequest): unknown {
+    const obj: any = {};
+    if (message.accountId !== "") {
+      obj.accountId = message.accountId;
+    }
+    if (message.displayName !== "") {
+      obj.displayName = message.displayName;
+    }
+    if (message.isKidsProfile !== false) {
+      obj.isKidsProfile = message.isKidsProfile;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CreateProfileRequest>, I>>(base?: I): CreateProfileRequest {
+    return CreateProfileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CreateProfileRequest>, I>>(object: I): CreateProfileRequest {
+    const message = createBaseCreateProfileRequest();
+    message.accountId = object.accountId ?? "";
+    message.displayName = object.displayName ?? "";
+    message.isKidsProfile = object.isKidsProfile ?? false;
+    return message;
+  },
+};
+
+function createBaseListProfilesRequest(): ListProfilesRequest {
+  return { accountId: "" };
+}
+
+export const ListProfilesRequest: MessageFns<ListProfilesRequest> = {
+  encode(message: ListProfilesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.accountId !== "") {
+      writer.uint32(10).string(message.accountId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListProfilesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListProfilesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.accountId = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListProfilesRequest {
+    return {
+      accountId: isSet(object.accountId)
+        ? globalThis.String(object.accountId)
+        : isSet(object.account_id)
+        ? globalThis.String(object.account_id)
+        : "",
+    };
+  },
+
+  toJSON(message: ListProfilesRequest): unknown {
+    const obj: any = {};
+    if (message.accountId !== "") {
+      obj.accountId = message.accountId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListProfilesRequest>, I>>(base?: I): ListProfilesRequest {
+    return ListProfilesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListProfilesRequest>, I>>(object: I): ListProfilesRequest {
+    const message = createBaseListProfilesRequest();
+    message.accountId = object.accountId ?? "";
+    return message;
+  },
+};
+
+function createBaseListProfilesResponse(): ListProfilesResponse {
+  return { profiles: [] };
+}
+
+export const ListProfilesResponse: MessageFns<ListProfilesResponse> = {
+  encode(message: ListProfilesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.profiles) {
+      Profile.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListProfilesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseListProfilesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.profiles.push(Profile.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): ListProfilesResponse {
+    return {
+      profiles: globalThis.Array.isArray(object?.profiles) ? object.profiles.map((e: any) => Profile.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: ListProfilesResponse): unknown {
+    const obj: any = {};
+    if (message.profiles?.length) {
+      obj.profiles = message.profiles.map((e) => Profile.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListProfilesResponse>, I>>(base?: I): ListProfilesResponse {
+    return ListProfilesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListProfilesResponse>, I>>(object: I): ListProfilesResponse {
+    const message = createBaseListProfilesResponse();
+    message.profiles = object.profiles?.map((e) => Profile.fromPartial(e)) || [];
+    return message;
+  },
+};
+
 /**
  * IdentityService is the source of truth for authentication and account
  * state. Other domains (Billing, Delivery, Social) call it rather than
@@ -1231,6 +1636,30 @@ export const IdentityServiceService = {
     responseSerialize: (value: Account): Buffer => Buffer.from(Account.encode(value).finish()),
     responseDeserialize: (value: Buffer): Account => Account.decode(value),
   },
+  /**
+   * Creates a Profile under an Account. The first profile on an account is
+   * always OWNER. PERSO/ETUDIANT accounts are capped at one profile — only
+   * FAMILLE accounts can create more (FAILED_PRECONDITION otherwise).
+   */
+  createProfile: {
+    path: "/identity.v1.IdentityService/CreateProfile" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: CreateProfileRequest): Buffer => Buffer.from(CreateProfileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): CreateProfileRequest => CreateProfileRequest.decode(value),
+    responseSerialize: (value: Profile): Buffer => Buffer.from(Profile.encode(value).finish()),
+    responseDeserialize: (value: Buffer): Profile => Profile.decode(value),
+  },
+  listProfiles: {
+    path: "/identity.v1.IdentityService/ListProfiles" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: ListProfilesRequest): Buffer => Buffer.from(ListProfilesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ListProfilesRequest => ListProfilesRequest.decode(value),
+    responseSerialize: (value: ListProfilesResponse): Buffer =>
+      Buffer.from(ListProfilesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ListProfilesResponse => ListProfilesResponse.decode(value),
+  },
 } as const;
 
 export interface IdentityServiceServer extends UntypedServiceImplementation {
@@ -1271,6 +1700,13 @@ export interface IdentityServiceServer extends UntypedServiceImplementation {
    */
   validateToken: handleUnaryCall<ValidateTokenRequest, ValidateTokenResponse>;
   getAccount: handleUnaryCall<GetAccountRequest, Account>;
+  /**
+   * Creates a Profile under an Account. The first profile on an account is
+   * always OWNER. PERSO/ETUDIANT accounts are capped at one profile — only
+   * FAMILLE accounts can create more (FAILED_PRECONDITION otherwise).
+   */
+  createProfile: handleUnaryCall<CreateProfileRequest, Profile>;
+  listProfiles: handleUnaryCall<ListProfilesRequest, ListProfilesResponse>;
 }
 
 export interface IdentityServiceClient extends Client {
@@ -1405,6 +1841,41 @@ export interface IdentityServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: Account) => void,
+  ): ClientUnaryCall;
+  /**
+   * Creates a Profile under an Account. The first profile on an account is
+   * always OWNER. PERSO/ETUDIANT accounts are capped at one profile — only
+   * FAMILLE accounts can create more (FAILED_PRECONDITION otherwise).
+   */
+  createProfile(
+    request: CreateProfileRequest,
+    callback: (error: ServiceError | null, response: Profile) => void,
+  ): ClientUnaryCall;
+  createProfile(
+    request: CreateProfileRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Profile) => void,
+  ): ClientUnaryCall;
+  createProfile(
+    request: CreateProfileRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Profile) => void,
+  ): ClientUnaryCall;
+  listProfiles(
+    request: ListProfilesRequest,
+    callback: (error: ServiceError | null, response: ListProfilesResponse) => void,
+  ): ClientUnaryCall;
+  listProfiles(
+    request: ListProfilesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: ListProfilesResponse) => void,
+  ): ClientUnaryCall;
+  listProfiles(
+    request: ListProfilesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: ListProfilesResponse) => void,
   ): ClientUnaryCall;
 }
 

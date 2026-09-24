@@ -38,6 +38,12 @@ service IdentityService {
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
 
   rpc GetAccount(GetAccountRequest) returns (Account);
+
+  // Creates a Profile under an Account. The first profile on an account is
+  // always OWNER. PERSO/ETUDIANT accounts are capped at one profile — only
+  // FAMILLE accounts can create more (FAILED_PRECONDITION otherwise).
+  rpc CreateProfile(CreateProfileRequest) returns (Profile);
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
 }
 
 message RegisterRequest {
@@ -106,4 +112,25 @@ message ValidateTokenResponse {
 
 message GetAccountRequest {
   string account_id = 1;
+}
+
+message Profile {
+  string id = 1;
+  string account_id = 2;
+  string display_name = 3;
+  bool is_kids_profile = 4;
+}
+
+message CreateProfileRequest {
+  string account_id = 1;
+  string display_name = 2;
+  bool is_kids_profile = 3;
+}
+
+message ListProfilesRequest {
+  string account_id = 1;
+}
+
+message ListProfilesResponse {
+  repeated Profile profiles = 1;
 }

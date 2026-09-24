@@ -77,3 +77,19 @@ export class InvalidAccessTokenError extends Error {
     this.name = 'InvalidAccessTokenError';
   }
 }
+
+/** Thrown by createProfile when a PERSO/ETUDIANT account (capped at one profile) already has one. Maps to gRPC FAILED_PRECONDITION. */
+export class ProfileLimitExceededError extends Error {
+  constructor() {
+    super('This account type is limited to one profile');
+    this.name = 'ProfileLimitExceededError';
+  }
+}
+
+/** Thrown by createProfile/registerAccount-adjacent input validation when displayName fails schema checks. Maps to gRPC INVALID_ARGUMENT. */
+export class InvalidProfileInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidProfileInputError';
+  }
+}

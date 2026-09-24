@@ -26,3 +26,11 @@ export const registerInputSchema = z
   );
 
 export type RegisterInput = z.infer<typeof registerInputSchema>;
+
+export const createProfileInputSchema = z.object({
+  accountId: z.string(),
+  displayName: z.string().trim().min(1).max(100),
+  isKidsProfile: z.boolean(),
+});
+
+export type CreateProfileInput = z.infer<typeof createProfileInputSchema>;
