@@ -83,6 +83,7 @@ Commentaires/likes/partage, puis suggestions de contenu.
 - `AGENT-BACKEND.md` — stack technique, structure de repo, standards de tests/logs/audit/sécurité/documentation pour l'implémentation backend
 - `AGENT-FRONTEND.md` — stack technique, structure de projet, standards de tests/a11y/observabilité/documentation pour l'implémentation frontend
 - `WORKFLOW.md` — boucle de travail à suivre pour chaque feature (planifier → challenger → implémenter → tester → committer)
+- `ARCHITECTURE.md` — comment gRPC/REST/GraphQL s'articulent concrètement (parcours de requête réel), et pourquoi chaque package (Prisma, argon2, jose, Fastify, ...) a été choisi
 
 ## Fichiers du projet
 
@@ -98,6 +99,7 @@ Commentaires/likes/partage, puis suggestions de contenu.
 AGENT-BACKEND.md
 AGENT-FRONTEND.md
 WORKFLOW.md
+ARCHITECTURE.md
 ```
 
 ## Prochaine étape

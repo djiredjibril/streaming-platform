@@ -1,6 +1,6 @@
 # AGENT.md — Backend Implementation Guide
 
-Ce document encadre tout agent (humain ou IA) qui implémente le backend de la plateforme de streaming. Il s'appuie sur les specs de domaine `01` à `07`. À lire avant toute génération de code sur ce projet, avec `WORKFLOW.md` qui définit la boucle plan → challenge → implémentation → test → commit à suivre pour chaque feature.
+Ce document encadre tout agent (humain ou IA) qui implémente le backend de la plateforme de streaming. Il s'appuie sur les specs de domaine `01` à `07`. À lire avant toute génération de code sur ce projet, avec `WORKFLOW.md` qui définit la boucle plan → challenge → implémentation → test → commit à suivre pour chaque feature, et `ARCHITECTURE.md` qui détaille — avec un parcours de requête réel — comment gRPC/REST/GraphQL s'articulent et pourquoi chaque package de la stack ci-dessous a été retenu.
 
 ## 1. Principes non négociables
 
@@ -17,7 +17,7 @@ Ce document encadre tout agent (humain ou IA) qui implémente le backend de la p
 | Langage | TypeScript (Node.js) | Cohérent avec ton stack existant, typage statique = moins de bugs en équipe/agent |
 | Framework HTTP/GraphQL Gateway | Fastify (routes REST `/auth/*`) + GraphQL Yoga monté dessus (tout le reste) | Auth/gestion de compte exposée en REST par décision de projet (cf. `00-OVERVIEW.md`, "Les trois styles d'API") — Fastify sert de socle HTTP commun aux deux |
 | gRPC | `@grpc/grpc-js` + `ts-proto` (génère des types TS depuis les `.proto`) | Cohérent avec `grpc-example/` déjà construit |
-| ORM/Query builder | Prisma ou Drizzle | Migrations versionnées, typage des requêtes — évite le SQL à la main sauf cas spécifiques (ex: requêtes de similarité en 07) |
+| ORM/Query builder | **Prisma** (tranché — voir `ARCHITECTURE.md` §5 pour le pourquoi face à Drizzle) | Migrations versionnées, typage des requêtes — évite le SQL à la main sauf cas spécifiques (ex: requêtes de similarité en 07) |
 | Base de données | PostgreSQL | Déjà comparé et maîtrisé dans `dbms-comparison/` |
 | Queue/Jobs | BullMQ + Redis | cf. `04-media-pipeline.md` |
 | Tests | Vitest (unitaire/intégration) + Testcontainers (DB réelle en test) | Cohérent avec ta CI/CD React déjà explorée |
