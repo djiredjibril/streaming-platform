@@ -88,6 +88,7 @@ Côté Identity, le mapping symétrique (erreur domaine → code gRPC) vit dans 
 | **argon2** | Hash des mots de passe | Recommandé par `01-identity.md` : résiste mieux au craquage GPU/ASIC que bcrypt aujourd'hui. Utilisé uniquement pour les mots de passe (secrets à faible entropie choisis par l'utilisateur) |
 | **jose** | Signature/vérification JWT (access tokens) | Implémentation JWT moderne, maintenue, API Promise-native ; pas de dépendance native à compiler (contrairement à certaines libs crypto) |
 | **`node:crypto`** (`randomBytes` + `createHash('sha256')`, pas de package) | Génération/hash des tokens opaques (refresh token, token de vérification email) | SHA-256 et non argon2id pour ces tokens : ce sont des secrets à haute entropie générés par le serveur (256 bits aléatoires), pas des mots de passe — argon2id serait juste plus lent pour rien. Documenté dans `services/identity/src/domain/tokens.ts` |
+| **ioredis** | Client Redis (rate limiting `Login`/`Register`) | Client Node.js le plus utilisé pour Redis, API Promise-native, pas de dépendance native à compiler — même raisonnement que `jose` |
 
 ### Spécifique à la Gateway
 

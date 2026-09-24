@@ -257,7 +257,7 @@ message ListProfilesResponse { repeated Profile profiles = 1; }
 ## Bonnes pratiques sécurité à appliquer dès la Phase 1
 
 - Hash des mots de passe avec **argon2id** (préféré à bcrypt aujourd'hui pour sa résistance GPU/ASIC) — jamais de hash maison
-- Rate limiting sur `Login` et `Register` (protection brute-force) — bon prétexte pour introduire Redis tôt
+- Rate limiting sur `Login` et `Register` (protection brute-force) — implémenté (Redis, fenêtre fixe par IP, `services/identity/src/domain/rateLimiter.ts` + `infra/redisRateLimiter.ts`)
 - Ne jamais stocker de refresh token en clair — hash-le comme un mot de passe
 - Rotation de refresh token à chaque usage ("refresh token rotation") : détecte le vol de token si un ancien refresh token est réutilisé
 - Vérification d'email obligatoire avant activation du compte (`status = pending_verification`)
@@ -284,11 +284,12 @@ Chaque route REST de la Gateway ne contient aucune logique métier : elle valide
 
 ## État d'avancement de ce fichier
 
-- [ ] Choisir la lib JWT (ex: `jose` en Node.js)
+- [x] Choisir la lib JWT (`jose`, `services/identity/src/domain/tokens.ts`)
 - [x] Définir le schéma DB (PostgreSQL, via Prisma — `services/identity/prisma/schema.prisma`)
 - [x] Générer le stub gRPC (`@grpc/grpc-js` + `ts-proto`, `services/identity/src/grpc/generated`)
-- [x] Implémenter Register (sans émission de token, cf. commentaire sur `rpc Register` ci-dessus) — Login/ValidateToken restent à faire
-- [ ] Implémenter la gateway GraphQL qui appelle Identity en gRPC
+- [x] Implémenter Register/VerifyEmail/Login/RefreshToken/Logout/ValidateToken/GetAccount/CreateProfile/ListProfiles — surface complète du domaine
+- [x] Rate limiting Redis sur Login/Register
+- [ ] Gateway GraphQL (Catalog/Social/Discovery, pas encore construits — l'auth passe par REST, cf. section ci-dessus)
 
 ## Prochaine étape
 

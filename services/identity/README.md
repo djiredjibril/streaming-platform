@@ -14,6 +14,8 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 - `CreateProfile` : applique la distinction perso/famille/étudiant de `01-identity.md` — `PERSO`/`ETUDIANT` sont limités à un seul profil (`FAILED_PRECONDITION` sur un deuxième), `FAMILLE` peut en créer plusieurs. Le premier profil d'un compte reçoit toujours le rôle `OWNER` ; les suivants (uniquement sur `FAMILLE`) reçoivent `KID` ou `MEMBER` selon `isKidsProfile`.
 - `ListProfiles` : liste les profils d'un compte.
 
+**Rate limiting** (protection brute-force, `01-identity.md` §"Bonnes pratiques sécurité") : `Login` (5 tentatives / 15 min) et `Register` (5 / heure), tous deux par IP client (pas par email, pour ne pas permettre à un attaquant de verrouiller le compte d'une victime). Fenêtre fixe via Redis (`INCR`+`EXPIRE`) — dépassement → `RateLimitExceededError` → gRPC `RESOURCE_EXHAUSTED`. Voir `src/domain/loginAccount.ts`/`registerAccount.ts` pour le détail des constantes, `src/infra/redisRateLimiter.ts` pour la limite connue (imprécision aux bornes de fenêtre, acceptée et documentée, pas un bug caché).
+
 ## Architecture
 
 Le service suit une architecture hexagonale simple (cf. `services/AGENT.md`, section 3) : `/domain` ne dépend de rien d'externe (ni Prisma, ni gRPC), `/infra` implémente les ports du domaine, `/grpc` est la couche de transport qui traduit proto ↔ domaine. Le diagramme ci-dessous montre le flux de `Register` ; `VerifyEmail` (et les RPCs suivants) suivent le même schéma via leur propre fichier `domain/*.ts`.
@@ -61,12 +63,15 @@ Requête gRPC (Register)
 | `src/domain/refreshTokenRepository.ts` | Port (interface) `RefreshTokenRepository` |
 | `src/domain/auditLogRepository.ts` | Port (interface) `AuditLogRepository` |
 | `src/domain/profileRepository.ts` | Port (interface) `ProfileRepository` |
-| `src/grpc/clientIp.ts` | Extrait l'IP client (métadonnée `x-client-ip` posée par la Gateway, sinon `call.getPeer()`) pour l'audit |
+| `src/domain/rateLimiter.ts` | Port (interface) `RateLimiter` — compteur à fenêtre fixe, `consume(key, limit, windowSeconds)` |
+| `src/grpc/clientIp.ts` | Extrait l'IP client (métadonnée `x-client-ip` posée par la Gateway, sinon `call.getPeer()`) pour l'audit et le rate limiting |
 | `src/infra/prismaAccountRepository.ts` | Implémentation Prisma du port `AccountRepository` |
 | `src/infra/prismaRefreshTokenRepository.ts` | Implémentation Prisma du port `RefreshTokenRepository` |
 | `src/infra/prismaAuditLogRepository.ts` | Implémentation Prisma du port `AuditLogRepository` |
 | `src/infra/prismaProfileRepository.ts` | Implémentation Prisma du port `ProfileRepository` — upsert de `Role` par nom à la volée (pas de script de seed séparé) |
 | `src/infra/prismaClient.ts` | Singleton `PrismaClient` du process |
+| `src/infra/redisClient.ts` | Construit un client `ioredis` — `url` injectée (comme `identityClient.ts` côté Gateway), pas lue depuis l'env ici |
+| `src/infra/redisRateLimiter.ts` | Implémentation Redis du port `RateLimiter` |
 | `src/infra/logger.ts` | Logger Pino du service (via `@streaming/shared-logging`) |
 | `prisma/schema.prisma` | Schéma DB complet du domaine Identity (voir ER dans `docs/01-identity.md`) |
 | `prisma/migrations/` | Migrations versionnées — générées via `npm run prisma:migrate`, jamais éditées à la main |
@@ -79,12 +84,13 @@ Requête gRPC (Register)
 |---|---|---|
 | `DATABASE_URL` | Connexion PostgreSQL (Prisma) | — requis |
 | `JWT_SECRET` | Secret HS256 de signature des access tokens — fail-fast au démarrage si absent | — requis |
+| `REDIS_URL` | Connexion Redis (rate limiting) — fail-fast au démarrage si absent | — requis |
 | `IDENTITY_GRPC_ADDRESS` | Adresse d'écoute du serveur gRPC | `0.0.0.0:50051` |
 
 ## Lancer en local
 
 ```bash
-docker compose up -d postgres   # depuis la racine du repo
+docker compose up -d postgres redis   # depuis la racine du repo
 cp ../../.env.example ../../.env  # si pas déjà fait
 npm run prisma:migrate           # applique les migrations
 npm run build && node dist/index.js
@@ -98,7 +104,7 @@ npm test              # depuis la racine, ou `npx vitest run` ici
 
 - `tests/unit/` : logique `/domain` pure, repositories en mémoire partagés (`tests/unit/fakes/`) — pas de DB
 - `tests/integration/register.grpc.test.ts` : cas d'erreur de `Register` (email dupliqué, étudiant sans email universitaire)
-- `tests/integration/authFlow.grpc.test.ts` : parcours complet du cycle de compte (register → verify → login → refresh → logout → ...), un seul PostgreSQL Testcontainers partagé, grandit au fil des sous-features — Testcontainers (vrai PostgreSQL éphémère) + vrai client gRPC, aucune donnée mockée
+- `tests/integration/authFlow.grpc.test.ts` : parcours complet du cycle de compte (register → verify → login → refresh → logout → ...), un seul PostgreSQL + Redis Testcontainers partagés, grandit au fil des sous-features — vrai PostgreSQL/Redis éphémères + vrai client gRPC, aucune donnée mockée. Le bloc `rate limiting` utilise la métadonnée `x-client-ip` avec une IP factice par test pour isoler son budget de celui des autres tests du fichier (une deuxième instance de client gRPC ne suffit pas : `@grpc/grpc-js` réutilise la même connexion sous-jacente pour une même cible)
 
 ## Régénérer les stubs gRPC
 
