@@ -7,3 +7,4 @@
 - feat: `Login` endpoint (gRPC) — JWT access token (15 min) + refresh token opaque (30 jours, stocké hashé), rejet des comptes non vérifiés/suspendus, audit `LOGIN_SUCCESS`/`LOGIN_FAILED` ; nouvelle variable d'env `JWT_SECRET` (fail-fast)
 - feat: `RefreshToken` endpoint (gRPC) — rotation avec détection de réutilisation (vol de token détecté = révocation de tous les refresh tokens du compte + audit `TOKEN_REVOKED`)
 - feat: `Logout` endpoint (gRPC) — révocation idempotente du refresh token présenté
+- feat: `ValidateToken`/`GetAccount` endpoints (gRPC) — vérification JWT et lookup de compte, prêts à être appelés par les autres domaines (Billing, Delivery, Social) et par la Gateway

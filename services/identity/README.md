@@ -9,6 +9,8 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 - `Login` : authentifie par email/mot de passe (argon2). Rejette les comptes `PENDING_VERIFICATION`/`SUSPENDED`. Succès : émet un JWT access token (15 min, HS256) + un refresh token opaque (30 jours, stocké hashé). Chaque tentative (succès/échec) écrit un `AuditLog`.
 - `RefreshToken` : fait tourner (rotate) le refresh token — l'ancien est révoqué, un nouveau couple access+refresh est émis. Présenter un token déjà révoqué est traité comme un vol : tous les refresh tokens du compte sont révoqués et un `AuditLog TOKEN_REVOKED` est écrit avant l'erreur.
 - `Logout` : révoque le refresh token présenté. Idempotent (token inconnu ou déjà révoqué = pas une erreur).
+- `ValidateToken` : vérifie la signature/expiration d'un JWT access token. Retourne `{valid: false}` plutôt qu'une erreur gRPC sur un token invalide — c'est un check booléen que tout autre service appellera avant chaque action protégée, pas un cas exceptionnel.
+- `GetAccount` : lookup d'un compte par id, `NOT_FOUND` si absent.
 
 ## Architecture
 
@@ -46,6 +48,8 @@ Requête gRPC (Register)
 | `src/domain/loginAccount.ts` | Logique métier de `Login` : vérification credentials, statut du compte, émission access+refresh token, audit |
 | `src/domain/refreshSession.ts` | Logique métier de `RefreshToken` : rotation, détection de réutilisation (vol) |
 | `src/domain/logoutAccount.ts` | Logique métier de `Logout` : révocation idempotente |
+| `src/domain/validateAccessToken.ts` | Logique métier de `ValidateToken` : vérification JWT |
+| `src/domain/getAccount.ts` | Logique métier de `GetAccount` : lookup par id |
 | `src/domain/tokens.ts` | Génération/hash de tokens opaques (refresh, vérification email) + signature/vérification JWT (`jose`) |
 | `src/domain/schemas.ts` | Schémas Zod de validation d'entrée |
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `identityServiceImpl.ts` |
