@@ -1,9 +1,11 @@
 import * as grpc from '@grpc/grpc-js';
 import { execFileSync } from 'node:child_process';
+import { Writable } from 'node:stream';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { PrismaClient } from '@prisma/client';
 import type { Redis as RedisClient } from 'ioredis';
+import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildIdentityServer, startIdentityServer } from '../../src/grpc/server.js';
 import { createRedisClient } from '../../src/infra/redisClient.js';
@@ -13,6 +15,16 @@ import {
   type AuthResponse,
 } from '../../src/grpc/generated/identity.js';
 import { logger } from '../../src/infra/logger.js';
+
+/** Captures Pino's JSON lines in memory instead of writing to stdout, so a test can assert on a specific field (correlation_id) without parsing the test runner's own output. */
+class MemoryLogStream extends Writable {
+  lines: Record<string, unknown>[] = [];
+
+  override _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
+    this.lines.push(JSON.parse(chunk.toString()));
+    callback();
+  }
+}
 
 /**
  * Exercises the full account lifecycle against a single real Postgres +
@@ -370,6 +382,59 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
             : reject(error ?? new Error('expected RESOURCE_EXHAUSTED on the 6th attempt')),
         );
       });
+    });
+  });
+
+  describe('correlation_id logging', () => {
+    // Its own server (same Postgres/Redis, fresh port + a logger that
+    // captures JSON lines in memory) so we can assert on a real emitted
+    // log line instead of just trusting the code reads the right metadata.
+    let logStream: MemoryLogStream;
+    let corrServer: grpc.Server;
+    let corrClient: IdentityServiceClient;
+
+    beforeAll(async () => {
+      logStream = new MemoryLogStream();
+      const testLogger = pino({}, logStream);
+      corrServer = buildIdentityServer(prisma, 'test-jwt-secret', redis, testLogger);
+      const port = await startIdentityServer(corrServer, '127.0.0.1:0');
+      corrClient = new IdentityServiceClient(`127.0.0.1:${port}`, grpc.credentials.createInsecure());
+    });
+
+    afterAll(async () => {
+      corrClient.close();
+      await new Promise<void>((resolve) => corrServer.tryShutdown(() => resolve()));
+    });
+
+    it('an explicit x-correlation-id metadata value shows up on the log line for that request', async () => {
+      const metadata = new grpc.Metadata();
+      metadata.set('x-correlation-id', 'test-correlation-abc');
+
+      await new Promise<void>((resolve, reject) => {
+        corrClient.register(
+          { email: 'correlation-test@example.com', password: 'correct-horse-battery', accountType: AccountType.PERSO },
+          metadata,
+          (error) => (error ? reject(error) : resolve()),
+        );
+      });
+
+      const matching = logStream.lines.find((line) => line.event === 'account_created');
+      expect(matching).toMatchObject({ correlation_id: 'test-correlation-abc' });
+    });
+
+    it('falls back to a generated UUID when no x-correlation-id is sent', async () => {
+      const response = await new Promise<AuthResponse>((resolve, reject) => {
+        corrClient.register(
+          { email: 'correlation-test-2@example.com', password: 'correct-horse-battery', accountType: AccountType.PERSO },
+          (error, res) => (error ? reject(error) : resolve(res!)),
+        );
+      });
+
+      const matching = logStream.lines.find(
+        (line) => line.event === 'account_created' && line.accountId === response.account!.id,
+      );
+      expect(typeof matching?.correlation_id).toBe('string');
+      expect(matching?.correlation_id).not.toBe('test-correlation-abc');
     });
   });
 });

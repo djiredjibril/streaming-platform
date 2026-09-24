@@ -26,6 +26,7 @@
     "@testcontainers/postgresql": "^10.13.2",
     "@testcontainers/redis": "^10.13.2",
     "dotenv-cli": "^7.4.4",
+    "pino": "^9.5.0",
     "prisma": "^5.22.0",
     "ts-proto": "^2.2.7"
   }
