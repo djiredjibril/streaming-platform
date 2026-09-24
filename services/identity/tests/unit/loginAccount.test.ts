@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AccountNotVerifiedError, AccountSuspendedError, InvalidCredentialsError } from '../../src/domain/errors.js';
+import {
+  AccountNotVerifiedError,
+  AccountSuspendedError,
+  InvalidCredentialsError,
+  RateLimitExceededError,
+} from '../../src/domain/errors.js';
 import { loginAccount } from '../../src/domain/loginAccount.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
 import { verifyAccessToken } from '../../src/domain/tokens.js';
@@ -101,5 +106,19 @@ describe('loginAccount', () => {
     await expect(
       loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: IP }, deps()),
     ).rejects.toBeInstanceOf(AccountSuspendedError);
+  });
+
+  it('rate-limits by IP: the 6th attempt within the window is rejected without even checking the password', async () => {
+    await registerAndActivate();
+
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        loginAccount({ email: EMAIL, password: 'wrong-password', ipAddress: IP }, deps()),
+      ).rejects.toBeInstanceOf(InvalidCredentialsError);
+    }
+
+    await expect(
+      loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: IP }, deps()),
+    ).rejects.toBeInstanceOf(RateLimitExceededError);
   });
 });

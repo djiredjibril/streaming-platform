@@ -28,6 +28,7 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
   let redis: RedisClient;
   let server: grpc.Server;
   let client: IdentityServiceClient;
+  let serverPort: number;
 
   beforeAll(async () => {
     [pgContainer, redisContainer] = await Promise.all([
@@ -45,8 +46,8 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     redis = createRedisClient(redisContainer.getConnectionUrl());
     server = buildIdentityServer(prisma, 'test-jwt-secret', redis, logger);
-    const port = await startIdentityServer(server, '127.0.0.1:0');
-    client = new IdentityServiceClient(`127.0.0.1:${port}`, grpc.credentials.createInsecure());
+    serverPort = await startIdentityServer(server, '127.0.0.1:0');
+    client = new IdentityServiceClient(`127.0.0.1:${serverPort}`, grpc.credentials.createInsecure());
   }, 60_000);
 
   afterAll(async () => {
@@ -314,5 +315,61 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
 
   it('logout is idempotent for an unknown token', async () => {
     await expect(logout('never-issued-token')).resolves.toMatchObject({ success: true });
+  });
+
+  describe('rate limiting', () => {
+    // Explicit x-client-ip metadata (same mechanism the Gateway uses in
+    // production, see grpc/clientIp.ts) with a fake IP unique to this
+    // block, so these attempts don't eat into (or get blocked by) the
+    // budget the lifecycle tests above already spent on the shared
+    // `client` connection's own peer address.
+    function withFakeIp(ip: string): grpc.Metadata {
+      const metadata = new grpc.Metadata();
+      metadata.set('x-client-ip', ip);
+      return metadata;
+    }
+
+    it('register: the 6th attempt within the window returns RESOURCE_EXHAUSTED', async () => {
+      const ip = '203.0.113.10';
+      for (let i = 0; i < 5; i++) {
+        await new Promise<void>((resolve, reject) => {
+          client.register(
+            { email: `ratelimit${i}@example.com`, password: 'correct-horse-battery', accountType: AccountType.PERSO },
+            withFakeIp(ip),
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        client.register(
+          { email: 'ratelimit5@example.com', password: 'correct-horse-battery', accountType: AccountType.PERSO },
+          withFakeIp(ip),
+          (error) =>
+            error?.code === grpc.status.RESOURCE_EXHAUSTED
+              ? resolve()
+              : reject(error ?? new Error('expected the 6th register to be rate-limited')),
+        );
+      });
+    });
+
+    it('login: the 6th attempt within the window returns RESOURCE_EXHAUSTED, even with the wrong password every time', async () => {
+      const ip = '203.0.113.20';
+      for (let i = 0; i < 5; i++) {
+        await new Promise<void>((resolve, reject) => {
+          client.login({ email: 'nobody@example.com', password: 'wrong' }, withFakeIp(ip), (error) =>
+            error?.code === grpc.status.UNAUTHENTICATED ? resolve() : reject(error ?? new Error('expected UNAUTHENTICATED')),
+          );
+        });
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        client.login({ email: 'nobody@example.com', password: 'wrong' }, withFakeIp(ip), (error) =>
+          error?.code === grpc.status.RESOURCE_EXHAUSTED
+            ? resolve()
+            : reject(error ?? new Error('expected RESOURCE_EXHAUSTED on the 6th attempt')),
+        );
+      });
+    });
   });
 });

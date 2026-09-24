@@ -1,6 +1,10 @@
 import argon2 from 'argon2';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EmailAlreadyRegisteredError, InvalidRegisterInputError } from '../../src/domain/errors.js';
+import {
+  EmailAlreadyRegisteredError,
+  InvalidRegisterInputError,
+  RateLimitExceededError,
+} from '../../src/domain/errors.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
 import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
@@ -94,5 +98,23 @@ describe('registerAccount', () => {
         { accountRepository, rateLimiter },
       ),
     ).rejects.toBeInstanceOf(EmailAlreadyRegisteredError);
+  });
+
+  it('rate-limits by IP: the 6th registration attempt within the window is rejected', async () => {
+    for (let i = 0; i < 5; i++) {
+      await registerAccount(
+        { email: `user${i}@example.com`, password: 'correct-horse', accountType: 'PERSO' },
+        IP,
+        { accountRepository, rateLimiter },
+      );
+    }
+
+    const attempt = registerAccount(
+      { email: 'user5@example.com', password: 'correct-horse', accountType: 'PERSO' },
+      IP,
+      { accountRepository, rateLimiter },
+    );
+    await expect(attempt).rejects.toBeInstanceOf(RateLimitExceededError);
+    await expect(attempt).rejects.toMatchObject({ retryAfterSeconds: expect.any(Number) });
   });
 });
