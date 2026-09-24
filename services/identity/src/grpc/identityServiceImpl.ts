@@ -25,6 +25,11 @@ const accountTypeToProto: Record<'PERSO' | 'FAMILLE' | 'ETUDIANT', AccountType> 
   ETUDIANT: AccountType.ETUDIANT,
 };
 
+/**
+ * Builds the IdentityService gRPC handler map (currently just `register`).
+ * Pure adapter: translates proto messages to/from the domain layer and maps
+ * domain errors to gRPC status codes — no business logic lives here.
+ */
 export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
   return {
     async register(
@@ -63,6 +68,7 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
   };
 }
 
+/** Maps a domain error to a gRPC ServiceError; unrecognized errors become INTERNAL (never leak internals to the caller). */
 function toGrpcError(error: unknown): grpc.ServiceError {
   if (error instanceof InvalidRegisterInputError) {
     return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);

@@ -5,6 +5,7 @@ import type {
   CreateAccountInput,
 } from '../domain/accountRepository.js';
 
+/** Prisma-backed AccountRepository — the only file in this service that issues SQL (via Prisma) for accounts. */
 export class PrismaAccountRepository implements AccountRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -13,6 +14,7 @@ export class PrismaAccountRepository implements AccountRepository {
     return account ? toAccountRecord(account) : null;
   }
 
+  /** Creates the Account row and, when `universityEmail` is set, a linked StudentVerification row in PENDING status (see docs/01-identity.md). */
   async create(input: CreateAccountInput): Promise<AccountRecord> {
     const account = await this.prisma.account.create({
       data: {

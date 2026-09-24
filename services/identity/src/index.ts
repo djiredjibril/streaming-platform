@@ -1,3 +1,4 @@
+/** Process entrypoint: starts the Identity gRPC server. See README.md for env vars. */
 import { prisma } from './infra/prismaClient.js';
 import { logger } from './infra/logger.js';
 import { buildIdentityServer, startIdentityServer } from './grpc/server.js';

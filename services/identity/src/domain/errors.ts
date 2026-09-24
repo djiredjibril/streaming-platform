@@ -1,3 +1,4 @@
+/** Thrown by registerAccount when the raw input fails schema/business validation. Maps to gRPC INVALID_ARGUMENT. */
 export class InvalidRegisterInputError extends Error {
   constructor(message: string) {
     super(message);
@@ -5,6 +6,7 @@ export class InvalidRegisterInputError extends Error {
   }
 }
 
+/** Thrown by registerAccount when the email is already taken. Maps to gRPC ALREADY_EXISTS. */
 export class EmailAlreadyRegisteredError extends Error {
   constructor() {
     super('An account with this email already exists');
