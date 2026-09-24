@@ -186,6 +186,12 @@ service IdentityService {
   // Appelé en interne par d'autres services (Delivery, Billing, Social)
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
   rpc GetAccount(GetAccountRequest) returns (Account);
+
+  // Le premier profil d'un compte reçoit toujours OWNER. PERSO/ETUDIANT
+  // sont limités à un seul profil (FAILED_PRECONDITION sur un deuxième) ;
+  // seul FAMILLE peut en créer plusieurs.
+  rpc CreateProfile(CreateProfileRequest) returns (Profile);
+  rpc ListProfiles(ListProfilesRequest) returns (ListProfilesResponse);
 }
 
 message RegisterRequest {
@@ -232,9 +238,19 @@ message LogoutRequest { string refresh_token = 1; }
 message LogoutResponse { bool success = 1; }
 message RefreshTokenRequest { string refresh_token = 1; }
 message LoginRequest { string email = 1; string password = 2; }
+
+message Profile {
+  string id = 1;
+  string account_id = 2;
+  string display_name = 3;
+  bool is_kids_profile = 4;
+}
+message CreateProfileRequest { string account_id = 1; string display_name = 2; bool is_kids_profile = 3; }
+message ListProfilesRequest { string account_id = 1; }
+message ListProfilesResponse { repeated Profile profiles = 1; }
 ```
 
-**Pas encore implémenté** : `CreateProfile`/`ListProfiles` (gestion des profils, comptes famille) — sous-feature distincte, pas dans ce lot. `ValidateTokenResponse.roles` (RBAC par profil) suivra une fois `Role`/`ProfileRole` exploités.
+**Pas encore implémenté** : `ValidateTokenResponse.roles` (RBAC par profil, exposer les rôles au caller) — `Role`/`ProfileRole` sont maintenant exploités par `CreateProfile` en interne, mais rien ne les expose encore côté `ValidateToken`.
 
 **Point d'apprentissage important** : `ValidateToken` sera l'appel gRPC le plus fréquent de tout le système (chaque service appelle Identity avant chaque action protégée). C'est le bon endroit pour découvrir plus tard le **connection pooling** et le **client-side load balancing** de gRPC si tu veux pousser la partie perf.
 

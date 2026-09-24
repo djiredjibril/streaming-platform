@@ -11,6 +11,8 @@ Source de vérité pour l'authentification et l'état des comptes. Voir `/docs/0
 - `Logout` : révoque le refresh token présenté. Idempotent (token inconnu ou déjà révoqué = pas une erreur).
 - `ValidateToken` : vérifie la signature/expiration d'un JWT access token. Retourne `{valid: false}` plutôt qu'une erreur gRPC sur un token invalide — c'est un check booléen que tout autre service appellera avant chaque action protégée, pas un cas exceptionnel.
 - `GetAccount` : lookup d'un compte par id, `NOT_FOUND` si absent.
+- `CreateProfile` : applique la distinction perso/famille/étudiant de `01-identity.md` — `PERSO`/`ETUDIANT` sont limités à un seul profil (`FAILED_PRECONDITION` sur un deuxième), `FAMILLE` peut en créer plusieurs. Le premier profil d'un compte reçoit toujours le rôle `OWNER` ; les suivants (uniquement sur `FAMILLE`) reçoivent `KID` ou `MEMBER` selon `isKidsProfile`.
+- `ListProfiles` : liste les profils d'un compte.
 
 ## Architecture
 
@@ -50,16 +52,20 @@ Requête gRPC (Register)
 | `src/domain/logoutAccount.ts` | Logique métier de `Logout` : révocation idempotente |
 | `src/domain/validateAccessToken.ts` | Logique métier de `ValidateToken` : vérification JWT |
 | `src/domain/getAccount.ts` | Logique métier de `GetAccount` : lookup par id |
+| `src/domain/createProfile.ts` | Logique métier de `CreateProfile` : limite 1-profil perso/étudiant, attribution automatique du rôle |
+| `src/domain/listProfiles.ts` | Logique métier de `ListProfiles` |
 | `src/domain/tokens.ts` | Génération/hash de tokens opaques (refresh, vérification email) + signature/vérification JWT (`jose`) |
 | `src/domain/schemas.ts` | Schémas Zod de validation d'entrée |
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `identityServiceImpl.ts` |
 | `src/domain/accountRepository.ts` | Port (interface) `AccountRepository` — permet de tester la logique métier sans DB |
 | `src/domain/refreshTokenRepository.ts` | Port (interface) `RefreshTokenRepository` |
 | `src/domain/auditLogRepository.ts` | Port (interface) `AuditLogRepository` |
+| `src/domain/profileRepository.ts` | Port (interface) `ProfileRepository` |
 | `src/grpc/clientIp.ts` | Extrait l'IP client (métadonnée `x-client-ip` posée par la Gateway, sinon `call.getPeer()`) pour l'audit |
 | `src/infra/prismaAccountRepository.ts` | Implémentation Prisma du port `AccountRepository` |
 | `src/infra/prismaRefreshTokenRepository.ts` | Implémentation Prisma du port `RefreshTokenRepository` |
 | `src/infra/prismaAuditLogRepository.ts` | Implémentation Prisma du port `AuditLogRepository` |
+| `src/infra/prismaProfileRepository.ts` | Implémentation Prisma du port `ProfileRepository` — upsert de `Role` par nom à la volée (pas de script de seed séparé) |
 | `src/infra/prismaClient.ts` | Singleton `PrismaClient` du process |
 | `src/infra/logger.ts` | Logger Pino du service (via `@streaming/shared-logging`) |
 | `prisma/schema.prisma` | Schéma DB complet du domaine Identity (voir ER dans `docs/01-identity.md`) |
