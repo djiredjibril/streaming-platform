@@ -110,6 +110,26 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     });
   }
 
+  function createProfile(request: Parameters<IdentityServiceClient['createProfile']>[0]) {
+    return new Promise<{ id: string; accountId: string; displayName: string; isKidsProfile: boolean }>(
+      (resolve, reject) => {
+        client.createProfile(request, (error, response) => {
+          if (error) reject(error);
+          else resolve(response as unknown as { id: string; accountId: string; displayName: string; isKidsProfile: boolean });
+        });
+      },
+    );
+  }
+
+  function listProfiles(accountId: string) {
+    return new Promise<{ profiles: unknown[] }>((resolve, reject) => {
+      client.listProfiles({ accountId }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
   const email = 'flow@example.com';
   let emailVerificationToken: string;
 
@@ -247,6 +267,30 @@ describe('Identity auth flow (real Postgres + gRPC)', () => {
     await expect(getAccountById('00000000-0000-0000-0000-000000000000')).rejects.toMatchObject({
       code: grpc.status.NOT_FOUND,
     });
+  });
+
+  it('createProfile assigns OWNER to the first profile', async () => {
+    const profile = await createProfile({ accountId, displayName: 'Jane', isKidsProfile: false });
+
+    expect(profile.accountId).toBe(accountId);
+    expect(profile.displayName).toBe('Jane');
+
+    const stored = await prisma.profileRole.findMany({
+      where: { profile: { accountId } },
+      include: { role: true },
+    });
+    expect(stored.map((r) => r.role.name)).toEqual(['OWNER']);
+  });
+
+  it('createProfile rejects a second profile on this PERSO account', async () => {
+    await expect(createProfile({ accountId, displayName: 'Second', isKidsProfile: false })).rejects.toMatchObject({
+      code: grpc.status.FAILED_PRECONDITION,
+    });
+  });
+
+  it('listProfiles returns the profile created above', async () => {
+    const response = await listProfiles(accountId);
+    expect(response.profiles).toHaveLength(1);
   });
 
   it('logout revokes the refresh token', async () => {
