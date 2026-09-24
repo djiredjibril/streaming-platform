@@ -426,6 +426,68 @@ describe('POST /auth/profiles', () => {
   });
 });
 
+describe('correlation_id propagation', () => {
+  /** Like fakeIdentityClient, but also captures the gRPC metadata each call received. */
+  function fakeIdentityClientCapturingMetadata(
+    methods: Partial<Record<MethodName, (request: unknown) => MethodResult>>,
+    capturedMetadata: grpc.Metadata[],
+  ): IdentityServiceClient {
+    const client: Record<string, unknown> = {};
+    for (const [name, handler] of Object.entries(methods)) {
+      client[name] = (
+        request: unknown,
+        metadata: grpc.Metadata,
+        callback: (error: grpc.ServiceError | null, response?: unknown) => void,
+      ) => {
+        capturedMetadata.push(metadata);
+        const { error, response } = handler(request);
+        callback(error ?? null, response);
+      };
+    }
+    return client as unknown as IdentityServiceClient;
+  }
+
+  it('sets x-correlation-id on a call that previously carried no metadata at all (GET /auth/me)', async () => {
+    const captured: grpc.Metadata[] = [];
+    const identityClient = fakeIdentityClientCapturingMetadata(
+      {
+        validateToken: () => ({ response: { valid: true, accountId: 'acc_1' } }),
+        getAccount: () => ({ response: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' } }),
+      },
+      captured,
+    );
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({ method: 'GET', url: '/auth/me', headers: { authorization: 'Bearer good-token' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(captured).toHaveLength(2); // validateToken (requireAccountId) + getAccount
+    const correlationIds = captured.map((metadata) => metadata.get('x-correlation-id')[0]);
+    expect(correlationIds[0]).toBeTruthy();
+    // Same request, same id, on both gRPC calls it triggers.
+    expect(correlationIds[0]).toBe(correlationIds[1]);
+  });
+
+  it('reuses an incoming x-correlation-id HTTP header as the value sent to Identity', async () => {
+    const captured: grpc.Metadata[] = [];
+    const identityClient = fakeIdentityClientCapturingMetadata(
+      { verifyEmail: () => ({ response: { accessToken: '', refreshToken: '', expiresIn: 0, account: { id: 'acc_1', email: 'jane@example.com', accountType: 1, status: 'ACTIVE' } } }) },
+      captured,
+    );
+    const app = buildGatewayServer({ identityClient, logger });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/verify-email',
+      headers: { 'x-correlation-id': 'client-supplied-trace-id' },
+      payload: { token: 'abc' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(captured[0]?.get('x-correlation-id')[0]).toBe('client-supplied-trace-id');
+  });
+});
+
 describe('GET /auth/profiles', () => {
   it('returns 401 without a bearer token', async () => {
     const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, logger });

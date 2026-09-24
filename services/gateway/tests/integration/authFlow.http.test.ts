@@ -1,9 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { Writable } from 'node:stream';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { PrismaClient } from '@prisma/client';
 import * as grpc from '@grpc/grpc-js';
 import type { Redis as RedisClient } from 'ioredis';
+import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // Test-only dependency on @streaming/identity: spins up the real Identity
 // gRPC server instead of mocking it, so this test exercises the full
@@ -13,6 +15,15 @@ import { createRedisClient } from '@streaming/identity/dist/infra/redisClient.js
 import { createIdentityClient } from '../../src/grpc/identityClient.js';
 import { buildGatewayServer } from '../../src/http/server.js';
 import { logger } from '../../src/infra/logger.js';
+
+class MemoryLogStream extends Writable {
+  lines: Record<string, unknown>[] = [];
+
+  override _write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void): void {
+    this.lines.push(JSON.parse(chunk.toString()));
+    callback();
+  }
+}
 
 describe('Gateway /auth/* (real Identity gRPC server + real Postgres + real Redis)', () => {
   let pgContainer: StartedPostgreSqlContainer;
@@ -227,6 +238,61 @@ describe('Gateway /auth/* (real Identity gRPC server + real Postgres + real Redi
         cookies: { refresh_token: currentRefreshCookie },
       });
       expect(refreshAfterLogout.statusCode).toBe(401);
+    });
+  });
+
+  describe('correlation_id propagation (end-to-end)', () => {
+    // Its own Identity server + Gateway app (same Postgres/Redis, fresh port + a
+    // logger that captures JSON lines in memory) so this asserts on a real log
+    // line emitted by Identity, not just that the Gateway reads the right header.
+    let logStream: MemoryLogStream;
+    let corrIdentityServer: grpc.Server;
+    let corrApp: ReturnType<typeof buildGatewayServer>;
+
+    beforeAll(async () => {
+      logStream = new MemoryLogStream();
+      const testLogger = pino({}, logStream);
+      corrIdentityServer = buildIdentityServer(prisma, 'test-jwt-secret', redis, testLogger);
+      const identityPort = await startIdentityServer(corrIdentityServer, '127.0.0.1:0');
+      const identityClient = createIdentityClient(`127.0.0.1:${identityPort}`);
+      corrApp = buildGatewayServer({ identityClient, logger });
+    });
+
+    afterAll(async () => {
+      await corrApp.close();
+      await new Promise<void>((resolve) => corrIdentityServer.tryShutdown(() => resolve()));
+    });
+
+    it('an x-correlation-id HTTP header sent to the Gateway shows up on the Identity log line it triggers', async () => {
+      // Own fake IP: register is rate-limited by IP and this describe block
+      // shares Postgres/Redis with the rest of the file's default 127.0.0.1 traffic.
+      const res = await corrApp.inject({
+        method: 'POST',
+        url: '/auth/register',
+        remoteAddress: '203.0.113.77',
+        headers: { 'x-correlation-id': 'http-test-correlation-id' },
+        payload: { email: 'correlation-http-test@example.com', password: 'correct-horse-battery', accountType: 'PERSO' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const matching = logStream.lines.find((line) => line.event === 'account_created');
+      expect(matching).toMatchObject({ correlation_id: 'http-test-correlation-id' });
+    });
+
+    it('generates a correlation_id when the client sends none, and reuses it across the request', async () => {
+      const res = await corrApp.inject({
+        method: 'POST',
+        url: '/auth/register',
+        remoteAddress: '203.0.113.77',
+        payload: { email: 'correlation-http-test-2@example.com', password: 'correct-horse-battery', accountType: 'PERSO' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const matching = logStream.lines.find(
+        (line) => line.event === 'account_created' && line.accountId === res.json().account.id,
+      );
+      expect(typeof matching?.correlation_id).toBe('string');
+      expect(matching?.correlation_id).not.toBe('http-test-correlation-id');
     });
   });
 
