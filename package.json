@@ -17,10 +17,22 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.15.0",
     "@typescript-eslint/parser": "^8.15.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.3.3",
     "typescript": "^5.7.2",
     "vitest": "^2.1.5"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "argon2@0.41.1": true,
+    "cpu-features@0.0.10": true,
+    "esbuild@0.21.5": true,
+    "fsevents@2.3.3": true,
+    "prisma@5.22.0": true,
+    "protobufjs@7.6.6": true,
+    "ssh2@1.17.0": true
   }
 }

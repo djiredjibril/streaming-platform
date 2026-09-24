@@ -162,6 +162,11 @@ syntax = "proto3";
 package identity.v1;
 
 service IdentityService {
+  // Ne crée jamais de session active : le compte est créé
+  // PENDING_VERIFICATION et access_token/refresh_token reviennent vides
+  // jusqu'à ce qu'une étape de vérification (ou Login, une fois implémenté)
+  // active le compte. Le caller doit lire account.status, pas supposer un
+  // token non vide. Implémenté dans services/identity — voir son README.
   rpc Register(RegisterRequest) returns (AuthResponse);
   rpc Login(LoginRequest) returns (AuthResponse);
   rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
@@ -266,9 +271,9 @@ type Query {
 ## État d'avancement de ce fichier
 
 - [ ] Choisir la lib JWT (ex: `jose` en Node.js)
-- [ ] Définir le schéma DB (Phase 1 utilise quel DBMS parmi ceux déjà comparés — PostgreSQL recommandé pour les contraintes d'unicité et les enums natifs)
-- [ ] Générer le stub gRPC (`@grpc/grpc-js` + `protoc`, comme dans `grpc-example/`)
-- [ ] Implémenter Register/Login/ValidateToken
+- [x] Définir le schéma DB (PostgreSQL, via Prisma — `services/identity/prisma/schema.prisma`)
+- [x] Générer le stub gRPC (`@grpc/grpc-js` + `ts-proto`, `services/identity/src/grpc/generated`)
+- [x] Implémenter Register (sans émission de token, cf. commentaire sur `rpc Register` ci-dessus) — Login/ValidateToken restent à faire
 - [ ] Implémenter la gateway GraphQL qui appelle Identity en gRPC
 
 ## Prochaine étape

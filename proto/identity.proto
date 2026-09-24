@@ -1,0 +1,44 @@
+syntax = "proto3";
+package identity.v1;
+
+// IdentityService is the source of truth for authentication and account
+// state. Other domains (Billing, Delivery, Social) call it rather than
+// duplicating its logic. See /docs/01-identity.md for the full domain spec.
+service IdentityService {
+  // Creates an Account. Does NOT issue an active session: new accounts start
+  // in `pending_verification` and access_token/refresh_token come back empty
+  // until a follow-up verification feature (or Login, once implemented)
+  // activates the account. Callers must check `account.status`, not assume
+  // a non-empty token.
+  rpc Register(RegisterRequest) returns (AuthResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+  AccountType account_type = 3;
+  // Required only when account_type == ETUDIANT.
+  optional string university_email = 4;
+}
+
+enum AccountType {
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+  PERSO = 1;
+  FAMILLE = 2;
+  ETUDIANT = 3;
+}
+
+message AuthResponse {
+  // Empty when the account is not yet active (see Register comment above).
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+  Account account = 4;
+}
+
+message Account {
+  string id = 1;
+  string email = 2;
+  AccountType account_type = 3;
+  string status = 4;
+}

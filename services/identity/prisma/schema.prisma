@@ -1,0 +1,128 @@
+// Identity domain model — see /docs/01-identity.md for the ER diagram and
+// rationale (Account/Profile split, why Role is a join table, etc).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  PERSO
+  FAMILLE
+  ETUDIANT
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum StudentVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RoleName {
+  OWNER
+  MEMBER
+  KID
+}
+
+enum AuditEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  PASSWORD_RESET
+  TOKEN_REVOKED
+}
+
+model Account {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String?       @map("password_hash")
+  accountType  AccountType   @map("account_type")
+  status       AccountStatus @default(PENDING_VERIFICATION)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  studentVerification StudentVerification?
+  profiles             Profile[]
+  refreshTokens        RefreshToken[]
+  auditLogs            AuditLog[]
+
+  @@map("accounts")
+}
+
+model StudentVerification {
+  id               String                     @id @default(uuid())
+  accountId        String                     @unique @map("account_id")
+  universityEmail  String?                    @map("university_email")
+  verificationStatus StudentVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt       DateTime?                  @map("verified_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("student_verifications")
+}
+
+model Profile {
+  id             String   @id @default(uuid())
+  accountId      String   @map("account_id")
+  displayName    String   @map("display_name")
+  avatarUrl      String?  @map("avatar_url")
+  isKidsProfile  Boolean  @default(false) @map("is_kids_profile")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  profileRoles ProfileRole[]
+
+  @@map("profiles")
+}
+
+model Role {
+  id           Int           @id @default(autoincrement())
+  name         RoleName      @unique
+  profileRoles ProfileRole[]
+
+  @@map("roles")
+}
+
+model ProfileRole {
+  profileId String @map("profile_id")
+  roleId    Int    @map("role_id")
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, roleId])
+  @@map("profile_roles")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  accountId String    @map("account_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id        String         @id @default(uuid())
+  accountId String?        @map("account_id")
+  eventType AuditEventType @map("event_type")
+  ipAddress String         @map("ip_address")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
