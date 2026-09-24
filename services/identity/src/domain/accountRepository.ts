@@ -21,6 +21,11 @@ export interface PendingVerification {
   expiresAt: Date;
 }
 
+/** AccountRecord plus the password hash — returned only to loginAccount, never to a transport layer. */
+export interface AccountCredentials extends AccountRecord {
+  passwordHash: string | null;
+}
+
 /**
  * Port implemented by the Prisma-backed adapter in /infra. Kept here (in
  * /domain) so domain functions have zero dependency on Prisma and can be
@@ -29,6 +34,8 @@ export interface PendingVerification {
 export interface AccountRepository {
   findByEmail(email: string): Promise<AccountRecord | null>;
   findById(accountId: string): Promise<AccountRecord | null>;
+  /** Includes the password hash — only loginAccount.ts should call this. */
+  findCredentialsByEmail(email: string): Promise<AccountCredentials | null>;
   create(input: CreateAccountInput): Promise<AccountRecord>;
   /** Looks up a PENDING_VERIFICATION account by the hash of its mocked verification token (see domain/tokens.ts). */
   findPendingVerificationByTokenHash(tokenHash: string): Promise<PendingVerification | null>;
