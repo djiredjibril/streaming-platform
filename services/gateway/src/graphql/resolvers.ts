@@ -3,6 +3,8 @@ import { GraphQLError } from 'graphql';
 import { callUnary } from '../grpc/callUnary.js';
 import type {
   AttachMediaAssetRequest,
+  BrowseTitlesRequest,
+  BrowseTitlesResponse,
   CatalogServiceClient,
   CreateTitleRequest,
   PublishTitleRequest,
@@ -162,6 +164,28 @@ export const resolvers = {
           return null;
         }
         throw toGraphQLError(error, context.logger, 'title_query_failed');
+      }
+    },
+
+    async browseTitles(
+      _parent: unknown,
+      args: { genre?: string; type?: string; cursor?: string; limit?: number },
+      context: GraphQLContext,
+    ): Promise<{ titles: GraphQLTitle[]; nextCursor: string | null }> {
+      try {
+        const response = await callUnary<BrowseTitlesRequest, BrowseTitlesResponse>(
+          context.catalogClient.browseTitles.bind(context.catalogClient),
+          {
+            genre: args.genre,
+            type: args.type !== undefined ? titleTypeFromGraphQL[args.type] : undefined,
+            cursor: args.cursor,
+            limit: args.limit,
+          },
+          correlationMetadata(context),
+        );
+        return { titles: response.titles.map(titleToGraphQL), nextCursor: response.nextCursor ?? null };
+      } catch (error) {
+        throw toGraphQLError(error, context.logger, 'browse_titles_query_failed');
       }
     },
   },
