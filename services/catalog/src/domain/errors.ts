@@ -14,10 +14,26 @@ export class SlugAlreadyExistsError extends Error {
   }
 }
 
-/** Thrown by GetTitleBySlug for an unknown slug OR a real title that isn't `published` — see catalog.proto's GetTitleBySlug comment for why these two cases are deliberately indistinguishable. Mapped to gRPC NOT_FOUND. */
+/** Thrown by GetTitleBySlug for an unknown slug OR a real title that isn't `published` — see catalog.proto's GetTitleBySlug comment for why these two cases are deliberately indistinguishable. Also thrown by AttachMediaAsset/PublishTitle for an unknown title id. Mapped to gRPC NOT_FOUND. */
 export class TitleNotFoundError extends Error {
   constructor() {
     super('Title not found');
     this.name = 'TitleNotFoundError';
+  }
+}
+
+/** Thrown when AttachMediaAsset's input fails Zod validation (schemas.ts). Mapped to gRPC INVALID_ARGUMENT. */
+export class InvalidAttachMediaAssetInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidAttachMediaAssetInputError';
+  }
+}
+
+/** Thrown by PublishTitle when the Title has no `READY` MediaAsset — a title is never published without something playable behind it (docs/03-catalog.md, "Bonnes pratiques"). Mapped to gRPC FAILED_PRECONDITION. */
+export class MediaAssetNotReadyError extends Error {
+  constructor() {
+    super('This title has no ready media asset — attach one before publishing');
+    this.name = 'MediaAssetNotReadyError';
   }
 }

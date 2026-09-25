@@ -1,14 +1,26 @@
 import * as grpc from '@grpc/grpc-js';
 import type { ServerUnaryCall, sendUnaryData } from '@grpc/grpc-js';
+import { attachMediaAsset } from '../domain/attachMediaAsset.js';
 import { createTitle } from '../domain/createTitle.js';
-import { InvalidCreateTitleInputError, SlugAlreadyExistsError, TitleNotFoundError } from '../domain/errors.js';
+import {
+  InvalidAttachMediaAssetInputError,
+  InvalidCreateTitleInputError,
+  MediaAssetNotReadyError,
+  SlugAlreadyExistsError,
+  TitleNotFoundError,
+} from '../domain/errors.js';
 import { getTitleBySlug } from '../domain/getTitleBySlug.js';
-import type { TitleRecord, TitleRepository } from '../domain/titleRepository.js';
+import type { MediaAssetRepository } from '../domain/mediaAssetRepository.js';
+import { publishTitle } from '../domain/publishTitle.js';
+import type { MediaAssetStatusInput, TitleRecord, TitleRepository } from '../domain/titleRepository.js';
 import type { ContentRatingInput, TitleTypeInput } from '../domain/schemas.js';
 import {
   ContentRating,
+  MediaAssetStatus,
+  type AttachMediaAssetRequest,
   type CreateTitleRequest,
   type GetTitleBySlugRequest,
+  type PublishTitleRequest,
   type Title as ProtoTitle,
   TitleStatus,
   TitleType,
@@ -16,6 +28,7 @@ import {
 
 export interface CatalogServiceDeps {
   titleRepository: TitleRepository;
+  mediaAssetRepository: MediaAssetRepository;
 }
 
 const titleTypeToProto: Record<TitleTypeInput, TitleType> = {
@@ -54,6 +67,13 @@ const titleStatusToProto: Record<TitleRecord['status'], TitleStatus> = {
   ARCHIVED: TitleStatus.ARCHIVED,
 };
 
+const mediaAssetStatusToProto: Record<MediaAssetStatusInput, MediaAssetStatus> = {
+  PENDING_UPLOAD: MediaAssetStatus.PENDING_UPLOAD,
+  PROCESSING: MediaAssetStatus.PROCESSING,
+  READY: MediaAssetStatus.READY,
+  FAILED: MediaAssetStatus.FAILED,
+};
+
 function titleToProto(title: TitleRecord): ProtoTitle {
   return {
     id: title.id,
@@ -67,6 +87,10 @@ function titleToProto(title: TitleRecord): ProtoTitle {
     posterUrl: title.posterUrl ?? undefined,
     backdropUrl: title.backdropUrl ?? undefined,
     status: titleStatusToProto[title.status],
+    mediaAssetStatus: title.mediaAssetStatus
+      ? mediaAssetStatusToProto[title.mediaAssetStatus]
+      : MediaAssetStatus.MEDIA_ASSET_STATUS_UNSPECIFIED,
+    mediaAssetUrl: title.mediaAssetUrl ?? undefined,
   };
 }
 
@@ -113,6 +137,33 @@ export function createCatalogServiceImpl(deps: CatalogServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async attachMediaAsset(
+      call: ServerUnaryCall<AttachMediaAssetRequest, ProtoTitle>,
+      callback: sendUnaryData<ProtoTitle>,
+    ): Promise<void> {
+      try {
+        const title = await attachMediaAsset(
+          { titleId: call.request.titleId, url: call.request.url },
+          { titleRepository: deps.titleRepository, mediaAssetRepository: deps.mediaAssetRepository },
+        );
+        callback(null, titleToProto(title));
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
+
+    async publishTitle(
+      call: ServerUnaryCall<PublishTitleRequest, ProtoTitle>,
+      callback: sendUnaryData<ProtoTitle>,
+    ): Promise<void> {
+      try {
+        const title = await publishTitle(call.request.id, deps.titleRepository);
+        callback(null, titleToProto(title));
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -126,6 +177,12 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof TitleNotFoundError) {
     return buildServiceError(grpc.status.NOT_FOUND, error.message);
+  }
+  if (error instanceof InvalidAttachMediaAssetInputError) {
+    return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
+  }
+  if (error instanceof MediaAssetNotReadyError) {
+    return buildServiceError(grpc.status.FAILED_PRECONDITION, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }

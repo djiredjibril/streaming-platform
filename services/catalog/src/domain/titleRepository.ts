@@ -1,5 +1,7 @@
 import type { ContentRatingInput, TitleTypeInput } from './schemas.js';
 
+export type MediaAssetStatusInput = 'PENDING_UPLOAD' | 'PROCESSING' | 'READY' | 'FAILED';
+
 export interface TitleRecord {
   id: string;
   slug: string;
@@ -12,6 +14,9 @@ export interface TitleRecord {
   posterUrl: string | null;
   backdropUrl: string | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  /** Null until AttachMediaAsset has been called at least once for this Title. */
+  mediaAssetStatus: MediaAssetStatusInput | null;
+  mediaAssetUrl: string | null;
 }
 
 export interface CreateTitleRecordInput {
@@ -33,5 +38,7 @@ export interface CreateTitleRecordInput {
  */
 export interface TitleRepository {
   findBySlug(slug: string): Promise<TitleRecord | null>;
+  findById(id: string): Promise<TitleRecord | null>;
   create(input: CreateTitleRecordInput): Promise<TitleRecord>;
+  updateStatus(id: string, status: TitleRecord['status']): Promise<TitleRecord>;
 }

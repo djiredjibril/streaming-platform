@@ -174,6 +174,57 @@ export function titleStatusToJSON(object: TitleStatus): string {
   }
 }
 
+export enum MediaAssetStatus {
+  MEDIA_ASSET_STATUS_UNSPECIFIED = 0,
+  PENDING_UPLOAD = 1,
+  PROCESSING = 2,
+  READY = 3,
+  FAILED = 4,
+  UNRECOGNIZED = -1,
+}
+
+export function mediaAssetStatusFromJSON(object: any): MediaAssetStatus {
+  switch (object) {
+    case 0:
+    case "MEDIA_ASSET_STATUS_UNSPECIFIED":
+      return MediaAssetStatus.MEDIA_ASSET_STATUS_UNSPECIFIED;
+    case 1:
+    case "PENDING_UPLOAD":
+      return MediaAssetStatus.PENDING_UPLOAD;
+    case 2:
+    case "PROCESSING":
+      return MediaAssetStatus.PROCESSING;
+    case 3:
+    case "READY":
+      return MediaAssetStatus.READY;
+    case 4:
+    case "FAILED":
+      return MediaAssetStatus.FAILED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return MediaAssetStatus.UNRECOGNIZED;
+  }
+}
+
+export function mediaAssetStatusToJSON(object: MediaAssetStatus): string {
+  switch (object) {
+    case MediaAssetStatus.MEDIA_ASSET_STATUS_UNSPECIFIED:
+      return "MEDIA_ASSET_STATUS_UNSPECIFIED";
+    case MediaAssetStatus.PENDING_UPLOAD:
+      return "PENDING_UPLOAD";
+    case MediaAssetStatus.PROCESSING:
+      return "PROCESSING";
+    case MediaAssetStatus.READY:
+      return "READY";
+    case MediaAssetStatus.FAILED:
+      return "FAILED";
+    case MediaAssetStatus.UNRECOGNIZED:
+    default:
+      return "UNRECOGNIZED";
+  }
+}
+
 export interface Title {
   id: string;
   slug: string;
@@ -190,6 +241,12 @@ export interface Title {
   posterUrl?: string | undefined;
   backdropUrl?: string | undefined;
   status: TitleStatus;
+  /**
+   * Absent (MEDIA_ASSET_STATUS_UNSPECIFIED) until AttachMediaAsset has been
+   * called at least once for this Title.
+   */
+  mediaAssetStatus: MediaAssetStatus;
+  mediaAssetUrl?: string | undefined;
 }
 
 export interface CreateTitleRequest {
@@ -207,6 +264,15 @@ export interface GetTitleBySlugRequest {
   slug: string;
 }
 
+export interface AttachMediaAssetRequest {
+  titleId: string;
+  url: string;
+}
+
+export interface PublishTitleRequest {
+  id: string;
+}
+
 function createBaseTitle(): Title {
   return {
     id: "",
@@ -220,6 +286,8 @@ function createBaseTitle(): Title {
     posterUrl: undefined,
     backdropUrl: undefined,
     status: 0,
+    mediaAssetStatus: 0,
+    mediaAssetUrl: undefined,
   };
 }
 
@@ -257,6 +325,12 @@ export const Title: MessageFns<Title> = {
     }
     if (message.status !== 0) {
       writer.uint32(88).int32(message.status);
+    }
+    if (message.mediaAssetStatus !== 0) {
+      writer.uint32(96).int32(message.mediaAssetStatus);
+    }
+    if (message.mediaAssetUrl !== undefined) {
+      writer.uint32(106).string(message.mediaAssetUrl);
     }
     return writer;
   },
@@ -362,6 +436,22 @@ export const Title: MessageFns<Title> = {
             message.status = reader.int32() as any;
             continue;
           }
+          case 12: {
+            if (tag !== 96) {
+              break;
+            }
+
+            message.mediaAssetStatus = reader.int32() as any;
+            continue;
+          }
+          case 13: {
+            if (tag !== 106) {
+              break;
+            }
+
+            message.mediaAssetUrl = reader.string();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -407,6 +497,16 @@ export const Title: MessageFns<Title> = {
         ? globalThis.String(object.backdrop_url)
         : undefined,
       status: isSet(object.status) ? titleStatusFromJSON(object.status) : 0,
+      mediaAssetStatus: isSet(object.mediaAssetStatus)
+        ? mediaAssetStatusFromJSON(object.mediaAssetStatus)
+        : isSet(object.media_asset_status)
+        ? mediaAssetStatusFromJSON(object.media_asset_status)
+        : 0,
+      mediaAssetUrl: isSet(object.mediaAssetUrl)
+        ? globalThis.String(object.mediaAssetUrl)
+        : isSet(object.media_asset_url)
+        ? globalThis.String(object.media_asset_url)
+        : undefined,
     };
   },
 
@@ -445,6 +545,12 @@ export const Title: MessageFns<Title> = {
     if (message.status !== 0) {
       obj.status = titleStatusToJSON(message.status);
     }
+    if (message.mediaAssetStatus !== 0) {
+      obj.mediaAssetStatus = mediaAssetStatusToJSON(message.mediaAssetStatus);
+    }
+    if (message.mediaAssetUrl !== undefined) {
+      obj.mediaAssetUrl = message.mediaAssetUrl;
+    }
     return obj;
   },
 
@@ -464,6 +570,8 @@ export const Title: MessageFns<Title> = {
     message.posterUrl = object.posterUrl ?? undefined;
     message.backdropUrl = object.backdropUrl ?? undefined;
     message.status = object.status ?? 0;
+    message.mediaAssetStatus = object.mediaAssetStatus ?? 0;
+    message.mediaAssetUrl = object.mediaAssetUrl ?? undefined;
     return message;
   },
 };
@@ -745,6 +853,162 @@ export const GetTitleBySlugRequest: MessageFns<GetTitleBySlugRequest> = {
   },
 };
 
+function createBaseAttachMediaAssetRequest(): AttachMediaAssetRequest {
+  return { titleId: "", url: "" };
+}
+
+export const AttachMediaAssetRequest: MessageFns<AttachMediaAssetRequest> = {
+  encode(message: AttachMediaAssetRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.titleId !== "") {
+      writer.uint32(10).string(message.titleId);
+    }
+    if (message.url !== "") {
+      writer.uint32(18).string(message.url);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AttachMediaAssetRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseAttachMediaAssetRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.titleId = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.url = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): AttachMediaAssetRequest {
+    return {
+      titleId: isSet(object.titleId)
+        ? globalThis.String(object.titleId)
+        : isSet(object.title_id)
+        ? globalThis.String(object.title_id)
+        : "",
+      url: isSet(object.url) ? globalThis.String(object.url) : "",
+    };
+  },
+
+  toJSON(message: AttachMediaAssetRequest): unknown {
+    const obj: any = {};
+    if (message.titleId !== "") {
+      obj.titleId = message.titleId;
+    }
+    if (message.url !== "") {
+      obj.url = message.url;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AttachMediaAssetRequest>, I>>(base?: I): AttachMediaAssetRequest {
+    return AttachMediaAssetRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AttachMediaAssetRequest>, I>>(object: I): AttachMediaAssetRequest {
+    const message = createBaseAttachMediaAssetRequest();
+    message.titleId = object.titleId ?? "";
+    message.url = object.url ?? "";
+    return message;
+  },
+};
+
+function createBasePublishTitleRequest(): PublishTitleRequest {
+  return { id: "" };
+}
+
+export const PublishTitleRequest: MessageFns<PublishTitleRequest> = {
+  encode(message: PublishTitleRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.id !== "") {
+      writer.uint32(10).string(message.id);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PublishTitleRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBasePublishTitleRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.id = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): PublishTitleRequest {
+    return { id: isSet(object.id) ? globalThis.String(object.id) : "" };
+  },
+
+  toJSON(message: PublishTitleRequest): unknown {
+    const obj: any = {};
+    if (message.id !== "") {
+      obj.id = message.id;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PublishTitleRequest>, I>>(base?: I): PublishTitleRequest {
+    return PublishTitleRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PublishTitleRequest>, I>>(object: I): PublishTitleRequest {
+    const message = createBasePublishTitleRequest();
+    message.id = object.id ?? "";
+    return message;
+  },
+};
+
 /**
  * CatalogService is the source of truth for content metadata (not the video
  * files themselves — see 04-media-pipeline.md). Called internally by the
@@ -794,6 +1058,39 @@ export const CatalogServiceService = {
     responseSerialize: (value: Title): Buffer => Buffer.from(Title.encode(value).finish()),
     responseDeserialize: (value: Buffer): Title => Title.decode(value),
   },
+  /**
+   * Attaches (or replaces) the one static video file for a Title. V1
+   * simplification: no real upload/transcoding pipeline yet
+   * (04-media-pipeline.md is Phase 2) — the asset is marked `READY`
+   * immediately since `url` is assumed to already point at a playable
+   * file. One MediaAsset per Title for now (Episode-level assets are a
+   * separate future feature). Admin-trusted, same boundary as CreateTitle.
+   */
+  attachMediaAsset: {
+    path: "/catalog.v1.CatalogService/AttachMediaAsset" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: AttachMediaAssetRequest): Buffer =>
+      Buffer.from(AttachMediaAssetRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): AttachMediaAssetRequest => AttachMediaAssetRequest.decode(value),
+    responseSerialize: (value: Title): Buffer => Buffer.from(Title.encode(value).finish()),
+    responseDeserialize: (value: Buffer): Title => Title.decode(value),
+  },
+  /**
+   * Flips a Title to `published`. Fails with FAILED_PRECONDITION unless
+   * the Title has a `READY` MediaAsset — a title is never published
+   * without something playable behind it (03-catalog.md, "Bonnes
+   * pratiques"). Admin-trusted, same boundary as CreateTitle.
+   */
+  publishTitle: {
+    path: "/catalog.v1.CatalogService/PublishTitle" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: PublishTitleRequest): Buffer => Buffer.from(PublishTitleRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): PublishTitleRequest => PublishTitleRequest.decode(value),
+    responseSerialize: (value: Title): Buffer => Buffer.from(Title.encode(value).finish()),
+    responseDeserialize: (value: Buffer): Title => Title.decode(value),
+  },
 } as const;
 
 export interface CatalogServiceServer extends UntypedServiceImplementation {
@@ -815,6 +1112,22 @@ export interface CatalogServiceServer extends UntypedServiceImplementation {
    * one step earlier at the metadata level).
    */
   getTitleBySlug: handleUnaryCall<GetTitleBySlugRequest, Title>;
+  /**
+   * Attaches (or replaces) the one static video file for a Title. V1
+   * simplification: no real upload/transcoding pipeline yet
+   * (04-media-pipeline.md is Phase 2) — the asset is marked `READY`
+   * immediately since `url` is assumed to already point at a playable
+   * file. One MediaAsset per Title for now (Episode-level assets are a
+   * separate future feature). Admin-trusted, same boundary as CreateTitle.
+   */
+  attachMediaAsset: handleUnaryCall<AttachMediaAssetRequest, Title>;
+  /**
+   * Flips a Title to `published`. Fails with FAILED_PRECONDITION unless
+   * the Title has a `READY` MediaAsset — a title is never published
+   * without something playable behind it (03-catalog.md, "Bonnes
+   * pratiques"). Admin-trusted, same boundary as CreateTitle.
+   */
+  publishTitle: handleUnaryCall<PublishTitleRequest, Title>;
 }
 
 export interface CatalogServiceClient extends Client {
@@ -860,6 +1173,50 @@ export interface CatalogServiceClient extends Client {
   ): ClientUnaryCall;
   getTitleBySlug(
     request: GetTitleBySlugRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  /**
+   * Attaches (or replaces) the one static video file for a Title. V1
+   * simplification: no real upload/transcoding pipeline yet
+   * (04-media-pipeline.md is Phase 2) — the asset is marked `READY`
+   * immediately since `url` is assumed to already point at a playable
+   * file. One MediaAsset per Title for now (Episode-level assets are a
+   * separate future feature). Admin-trusted, same boundary as CreateTitle.
+   */
+  attachMediaAsset(
+    request: AttachMediaAssetRequest,
+    callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  attachMediaAsset(
+    request: AttachMediaAssetRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  attachMediaAsset(
+    request: AttachMediaAssetRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  /**
+   * Flips a Title to `published`. Fails with FAILED_PRECONDITION unless
+   * the Title has a `READY` MediaAsset — a title is never published
+   * without something playable behind it (03-catalog.md, "Bonnes
+   * pratiques"). Admin-trusted, same boundary as CreateTitle.
+   */
+  publishTitle(
+    request: PublishTitleRequest,
+    callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  publishTitle(
+    request: PublishTitleRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  publishTitle(
+    request: PublishTitleRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: Title) => void,

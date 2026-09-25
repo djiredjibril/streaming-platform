@@ -64,5 +64,25 @@ model Title {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
+  mediaAsset MediaAsset?
+
   @@map("titles")
+}
+
+// One playable file per Title in V1 (no Episode yet, so no per-episode
+// asset). `status` defaults to READY: AttachMediaAsset is a stand-in for a
+// real upload pipeline (04-media-pipeline.md, Phase 2) — the caller-provided
+// `url` is trusted to already point at a playable static file, no actual
+// transcoding happens here yet.
+model MediaAsset {
+  id        String           @id @default(uuid())
+  titleId   String           @unique @map("title_id")
+  status    MediaAssetStatus @default(READY)
+  url       String
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  title Title @relation(fields: [titleId], references: [id], onDelete: Cascade)
+
+  @@map("media_assets")
 }
