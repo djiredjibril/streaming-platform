@@ -17,6 +17,8 @@ export interface TitleRecord {
   /** Null until AttachMediaAsset has been called at least once for this Title. */
   mediaAssetStatus: MediaAssetStatusInput | null;
   mediaAssetUrl: string | null;
+  /** Genre names (docs/03-catalog.md's Genre/TitleGenre many-to-many) — always present, empty array if none tagged. */
+  genres: string[];
 }
 
 export interface CreateTitleRecordInput {
@@ -29,6 +31,8 @@ export interface CreateTitleRecordInput {
   runtimeMinutes?: number;
   posterUrl?: string;
   backdropUrl?: string;
+  /** Genre names, upserted by name — see prismaTitleRepository.ts. */
+  genres: string[];
 }
 
 /**

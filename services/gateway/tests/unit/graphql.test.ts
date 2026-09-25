@@ -54,6 +54,7 @@ const protoTitle = {
   status: 2, // TitleStatus.PUBLISHED
   mediaAssetStatus: 3, // MediaAssetStatus.READY
   mediaAssetUrl: 'https://example.com/matrix.mp4',
+  genres: ['Action', 'Sci-Fi'],
 };
 
 describe('Query.title', () => {
@@ -101,6 +102,19 @@ describe('Query.title', () => {
     });
 
     expect(body.data.title).toEqual({ isPlayable: false, videoUrl: null });
+  });
+
+  it('returns tagged genre names', async () => {
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      getTitleBySlug: () => ({ response: protoTitle }),
+    });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($slug: String!) { title(slug: $slug) { genres } }', {
+      slug: 'the-matrix-1999',
+    });
+
+    expect(body.data.title).toEqual({ genres: ['Action', 'Sci-Fi'] });
   });
 
   it('returns null (not an error) for NOT_FOUND — an unpublished or unknown slug', async () => {
@@ -192,6 +206,19 @@ describe('Mutation.createTitle', () => {
 
     expect(body.errors).toBeUndefined();
     expect(body.data.createTitle.slug).toBe('the-matrix-1999');
+  });
+
+  it('passes genres through to Catalog, defaulting to an empty array when omitted', async () => {
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'admin_1', isAdmin: true } }),
+    });
+    const createTitle = vi.fn(() => ({ response: { ...protoTitle, status: 1 } }));
+    const catalogClient = fakeClient<CatalogServiceClient>({ createTitle });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    await graphqlRequest(app, CREATE_TITLE_MUTATION, { input: validInput }, { authorization: 'Bearer admin-token' });
+
+    expect(createTitle).toHaveBeenCalledWith(expect.objectContaining({ genres: [] }));
   });
 
   it('maps ALREADY_EXISTS (duplicate slug) to a typed error', async () => {

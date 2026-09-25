@@ -65,4 +65,32 @@ describe('createTitle', () => {
       createTitle({ ...validMovieInput, rating: 'NOT_A_RATING' }, { titleRepository }),
     ).rejects.toBeInstanceOf(InvalidCreateTitleInputError);
   });
+
+  describe('genres', () => {
+    it('defaults to an empty array when omitted', async () => {
+      const title = await createTitle(validMovieInput, { titleRepository });
+      expect(title.genres).toEqual([]);
+    });
+
+    it('trims and deduplicates genre names', async () => {
+      const title = await createTitle(
+        { ...validMovieInput, genres: [' Action ', 'Sci-Fi', 'Action'] },
+        { titleRepository },
+      );
+      expect(title.genres).toEqual(['Action', 'Sci-Fi']);
+    });
+
+    it('rejects an empty genre name', async () => {
+      await expect(
+        createTitle({ ...validMovieInput, genres: ['Action', '  '] }, { titleRepository }),
+      ).rejects.toBeInstanceOf(InvalidCreateTitleInputError);
+    });
+
+    it('rejects more than 10 genres', async () => {
+      const genres = Array.from({ length: 11 }, (_, i) => `Genre${i}`);
+      await expect(createTitle({ ...validMovieInput, genres }, { titleRepository })).rejects.toBeInstanceOf(
+        InvalidCreateTitleInputError,
+      );
+    });
+  });
 });

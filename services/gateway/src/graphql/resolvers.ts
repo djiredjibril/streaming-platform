@@ -71,6 +71,7 @@ interface GraphQLTitle {
   backdropUrl: string | null;
   isPlayable: boolean;
   videoUrl: string | null;
+  genres: string[];
 }
 
 function titleToGraphQL(title: ProtoTitle): GraphQLTitle {
@@ -87,6 +88,7 @@ function titleToGraphQL(title: ProtoTitle): GraphQLTitle {
     backdropUrl: title.backdropUrl ?? null,
     isPlayable: title.mediaAssetStatus === MediaAssetStatus.READY,
     videoUrl: title.mediaAssetUrl ?? null,
+    genres: title.genres,
   };
 }
 
@@ -176,6 +178,7 @@ export const resolvers = {
           runtimeMinutes?: number;
           posterUrl?: string;
           backdropUrl?: string;
+          genres?: string[];
         };
       },
       context: GraphQLContext,
@@ -194,6 +197,7 @@ export const resolvers = {
             runtimeMinutes: args.input.runtimeMinutes,
             posterUrl: args.input.posterUrl,
             backdropUrl: args.input.backdropUrl,
+            genres: args.input.genres ?? [],
           },
           correlationMetadata(context),
         );

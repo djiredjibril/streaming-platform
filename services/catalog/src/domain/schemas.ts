@@ -20,6 +20,15 @@ export const createTitleInputSchema = z
     runtimeMinutes: z.number().int().positive().optional(),
     posterUrl: z.string().url().optional(),
     backdropUrl: z.string().url().optional(),
+    // Trimmed, deduplicated (order-preserving, case-sensitive), capped at
+    // 10 — a title tagged with dozens of genres is almost certainly a data
+    // entry mistake, not a real catalog need.
+    genres: z
+      .array(z.string().trim().min(1, 'a genre name cannot be empty'))
+      .max(10, 'a title can have at most 10 genres')
+      .transform((names) => [...new Set(names)])
+      .optional()
+      .default([]),
   })
   .superRefine((input, ctx) => {
     if (input.type === 'SERIES' && input.runtimeMinutes !== undefined) {

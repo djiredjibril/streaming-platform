@@ -4,9 +4,9 @@ Source de vérité pour les métadonnées de contenu (films/séries/shorts) — 
 
 ## Implémenté
 
-**V1 scope** : `Title` + un `MediaAsset` statique par titre. Genre, Season, Episode et Cast restent des features séparées à venir (`docs/03-catalog.md` les liste toutes, mais `docs/WORKFLOW.md` impose de découper par feature testable).
+**V1 scope** : `Title` + un `MediaAsset` statique par titre + `Genre` (many-to-many). Season, Episode et Cast restent des features séparées à venir (`docs/03-catalog.md` les liste toutes, mais `docs/WORKFLOW.md` impose de découper par feature testable).
 
-- `CreateTitle` : crée un `Title` en statut `DRAFT` — jamais `PUBLISHED` directement. Le slug public est dérivé de `originalTitle` + `releaseYear` (`src/domain/slug.ts`, ex: "The Matrix" + 1999 → `the-matrix-1999`) ; une collision de slug est rejetée (`ALREADY_EXISTS`) plutôt que résolue automatiquement avec un suffixe — simplification V1, à revoir si le catalogue grossit. `runtimeMinutes` est obligatoire pour `MOVIE`/`SHORT` et rejeté pour `SERIES` (le runtime vivra sur `Episode` quand cette feature existera).
+- `CreateTitle` : crée un `Title` en statut `DRAFT` — jamais `PUBLISHED` directement. Le slug public est dérivé de `originalTitle` + `releaseYear` (`src/domain/slug.ts`, ex: "The Matrix" + 1999 → `the-matrix-1999`) ; une collision de slug est rejetée (`ALREADY_EXISTS`) plutôt que résolue automatiquement avec un suffixe — simplification V1, à revoir si le catalogue grossit. `runtimeMinutes` est obligatoire pour `MOVIE`/`SHORT` et rejeté pour `SERIES` (le runtime vivra sur `Episode` quand cette feature existera). Accepte aussi une liste de `genres` (noms, triés/dédupliqués, max 10) — chaque nom est upserté (`connectOrCreate`, même patron que le upsert de `Role` par nom d'Identity dans `CreateProfile`), pas de gestion séparée du référentiel de genres.
 - `GetTitleBySlug` : ne retourne jamais un titre qui n'est pas `PUBLISHED` — un vrai titre `DRAFT`/`ARCHIVED` se comporte exactement comme un slug inconnu (`NOT_FOUND` dans les deux cas). C'est ce qui empêche ce RPC de servir à découvrir du contenu non publié en essayant des slugs (`docs/03-catalog.md`, "Bonnes pratiques").
 - `AttachMediaAsset` : associe (ou remplace) le fichier vidéo statique d'un `Title` — un seul par titre en V1 (pas encore d'`Episode`). Marque l'asset `READY` immédiatement : **pas de vrai pipeline d'upload/transcodage** (`04-media-pipeline.md`, Phase 2) — l'URL fournie par l'appelant est supposée déjà pointer vers un fichier lisible.
 - `PublishTitle` : bascule un `Title` en `PUBLISHED` — refuse (`FAILED_PRECONDITION`) tant que le titre n'a pas de `MediaAsset` `READY`. Un titre n'est jamais publié sans avoir quelque chose de regardable derrière (`docs/03-catalog.md`, "Bonnes pratiques"). Pas de mutation pour dépublier/archiver pour l'instant.
@@ -34,11 +34,11 @@ Même architecture hexagonale que Identity (`services/AGENT.md`, section 3) : `/
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `catalogServiceImpl.ts` |
 | `src/domain/titleRepository.ts` | Port (interface) `TitleRepository` — permet de tester la logique métier sans DB |
 | `src/domain/mediaAssetRepository.ts` | Port (interface) `MediaAssetRepository` |
-| `src/infra/prismaTitleRepository.ts` | Implémentation Prisma du port `TitleRepository` — joint le (au plus un) `MediaAsset` sur chaque lecture |
+| `src/infra/prismaTitleRepository.ts` | Implémentation Prisma du port `TitleRepository` — joint le (au plus un) `MediaAsset` et les genres taggés sur chaque lecture |
 | `src/infra/prismaMediaAssetRepository.ts` | Implémentation Prisma du port `MediaAssetRepository` (`upsert` par `titleId`) |
 | `src/infra/prismaClient.ts` | Singleton `PrismaClient` du process |
 | `src/infra/logger.ts` | Logger Pino du service |
-| `prisma/schema.prisma` | Schéma DB du domaine Catalog (V1 : `Title` + `MediaAsset` — voir ER complet dans `docs/03-catalog.md`) |
+| `prisma/schema.prisma` | Schéma DB du domaine Catalog (V1 : `Title` + `MediaAsset` + `Genre`/`TitleGenre` — voir ER complet dans `docs/03-catalog.md`) |
 | `prisma/migrations/` | Migrations versionnées — générées via `npm run prisma:migrate`, jamais éditées à la main |
 | `tests/unit/` | Tests de `/domain` avec un repository en mémoire (pas de DB) |
 | `tests/integration/` | Tests bout-en-bout : vrai PostgreSQL (Testcontainers) + vrai client gRPC |

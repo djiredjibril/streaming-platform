@@ -91,6 +91,7 @@ function titleToProto(title: TitleRecord): ProtoTitle {
       ? mediaAssetStatusToProto[title.mediaAssetStatus]
       : MediaAssetStatus.MEDIA_ASSET_STATUS_UNSPECIFIED,
     mediaAssetUrl: title.mediaAssetUrl ?? undefined,
+    genres: title.genres,
   };
 }
 
@@ -117,6 +118,7 @@ export function createCatalogServiceImpl(deps: CatalogServiceDeps) {
             runtimeMinutes: call.request.runtimeMinutes,
             posterUrl: call.request.posterUrl,
             backdropUrl: call.request.backdropUrl,
+            genres: call.request.genres,
           },
           { titleRepository: deps.titleRepository },
         );

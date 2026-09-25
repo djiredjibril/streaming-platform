@@ -1,20 +1,23 @@
 import type { PrismaClient } from '../../generated/prisma-client/index.js';
 import type { CreateTitleRecordInput, TitleRecord, TitleRepository } from '../domain/titleRepository.js';
 
-/** Includes the (at most one) MediaAsset row so every TitleRecord carries its media status/url without a separate query — cheap while it's a 1:1 relation (V1, no Episode yet). */
-const includeMediaAsset = { mediaAsset: true } as const;
+/** Includes the (at most one) MediaAsset row and tagged genres so every TitleRecord carries them without a separate query. */
+const includeMediaAssetAndGenres = {
+  mediaAsset: true,
+  titleGenres: { include: { genre: true } },
+} as const;
 
 /** Prisma-backed TitleRepository — the only file in this service that issues SQL (via Prisma) for titles. */
 export class PrismaTitleRepository implements TitleRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
   async findBySlug(slug: string): Promise<TitleRecord | null> {
-    const title = await this.prisma.title.findUnique({ where: { slug }, include: includeMediaAsset });
+    const title = await this.prisma.title.findUnique({ where: { slug }, include: includeMediaAssetAndGenres });
     return title ? toTitleRecord(title) : null;
   }
 
   async findById(id: string): Promise<TitleRecord | null> {
-    const title = await this.prisma.title.findUnique({ where: { id }, include: includeMediaAsset });
+    const title = await this.prisma.title.findUnique({ where: { id }, include: includeMediaAssetAndGenres });
     return title ? toTitleRecord(title) : null;
   }
 
@@ -30,14 +33,26 @@ export class PrismaTitleRepository implements TitleRepository {
         runtimeMinutes: input.runtimeMinutes,
         posterUrl: input.posterUrl,
         backdropUrl: input.backdropUrl,
+        // Upsert-by-name: a genre not already in the table is created on the
+        // fly (same pattern as Identity's Role upsert in CreateProfile) —
+        // no separate seed script for a fixed genre list.
+        titleGenres: {
+          create: input.genres.map((name) => ({
+            genre: { connectOrCreate: { where: { name }, create: { name } } },
+          })),
+        },
       },
-      include: includeMediaAsset,
+      include: includeMediaAssetAndGenres,
     });
     return toTitleRecord(title);
   }
 
   async updateStatus(id: string, status: TitleRecord['status']): Promise<TitleRecord> {
-    const title = await this.prisma.title.update({ where: { id }, data: { status }, include: includeMediaAsset });
+    const title = await this.prisma.title.update({
+      where: { id },
+      data: { status },
+      include: includeMediaAssetAndGenres,
+    });
     return toTitleRecord(title);
   }
 }
@@ -55,6 +70,7 @@ function toTitleRecord(title: {
   backdropUrl: string | null;
   status: string;
   mediaAsset: { status: string; url: string } | null;
+  titleGenres: { genre: { name: string } }[];
 }): TitleRecord {
   return {
     id: title.id,
@@ -70,5 +86,6 @@ function toTitleRecord(title: {
     status: title.status as TitleRecord['status'],
     mediaAssetStatus: (title.mediaAsset?.status as TitleRecord['mediaAssetStatus']) ?? null,
     mediaAssetUrl: title.mediaAsset?.url ?? null,
+    genres: title.titleGenres.map((tg) => tg.genre.name),
   };
 }
