@@ -142,7 +142,7 @@ Pour la recherche full-text (titre, synopsis, acteurs), deux options :
 
 Catalog est un bon candidat pour être exposé **directement en GraphQL** côté client (par opposition à REST, contrairement à Identity — cf. `docs/00-OVERVIEW.md`, "Les trois styles d'API") car c'est un domaine read-heavy. Le GraphQL est hébergé par la **Gateway** (seul point d'entrée client, `services/gateway/src/graphql/`), qui appelle `CatalogService` en gRPC interne — même schéma que pour Identity/REST, pas de couche supplémentaire au-delà de ce qui existe déjà.
 
-**Implémenté** (`services/gateway/src/graphql/schema.ts`, source de vérité pour ce qui est réellement exposé aujourd'hui) : `type Title` (sans `genres`/`seasons`, avec `isPlayable`/`videoUrl` en plus — dérivés du `MediaAsset`, absents de la cible ci-dessous puisqu'elle les place sur `Episode`), `Query.title(slug)`, `Mutation.createTitle`/`attachMediaAsset`/`publishTitle`. Le bloc ci-dessous est le schéma **cible** complet de la spec — `browseTitles`/`searchTitles`, `Season`/`Episode`, et le filtrage kids restent à construire.
+**Implémenté** (`services/gateway/src/graphql/schema.ts`, source de vérité pour ce qui est réellement exposé aujourd'hui) : `type Title` (sans `seasons`, avec `isPlayable`/`videoUrl` en plus — dérivés du `MediaAsset`, absents de la cible ci-dessous puisqu'elle les place sur `Episode` — et `genres` en `[String!]!` plutôt que `[Genre!]!`, cf. plus bas), `Query.title(slug)`, `Mutation.createTitle`/`attachMediaAsset`/`publishTitle`. Le bloc ci-dessous est le schéma **cible** complet de la spec — `browseTitles`/`searchTitles`, `Season`/`Episode`, et le filtrage kids restent à construire.
 
 ```graphql
 type Title {
@@ -181,6 +181,8 @@ type Query {
 
 **Filtrage kids** : le resolver `browseTitles`/`searchTitles` doit recevoir le profil actif (extrait du token validé via Identity) et exclure automatiquement les ratings inadaptés — logique centralisée dans un seul resolver middleware, jamais dupliquée.
 
+**Genre implémenté différemment de la cible ci-dessus** : `Title.genres` est en `[String!]!` (des noms) plutôt qu'en `[Genre!]!` — rien ne cherche encore un titre par id de genre, donc exposer un id serait de la complexité sans usage. `CreateTitle` upserte chaque nom à la volée (`connectOrCreate`), pas de mutation séparée pour gérer le référentiel de genres.
+
 ## Bonnes pratiques
 
 - **Statut `draft`/`published`** dès le départ : jamais exposer un contenu dont le `MediaAsset` n'est pas `ready`, même si les métadonnées existent déjà (évite d'afficher un titre non lisible)
@@ -191,7 +193,7 @@ type Query {
 
 ## État d'avancement
 
-- [x] Schéma DB PostgreSQL — `Title` + `MediaAsset` (un par titre, V1 statique) (`CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` gRPC, `services/catalog/`) ; Season/Episode/Genre restent à faire, features séparées
+- [x] Schéma DB PostgreSQL — `Title` + `MediaAsset` (un par titre, V1 statique) + `Genre`/`TitleGenre` (`CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` gRPC, `services/catalog/`) ; Season/Episode restent à faire, features séparées
 - [ ] Index GIN full-text search
 - [x] Resolvers GraphQL — `Query.title(slug)`/`Mutation.createTitle` (`services/gateway/src/graphql/`) ; filtrage kids pas encore applicable (pas de profils actifs dans le contexte GraphQL pour l'instant, à ajouter avec `browseTitles`/`searchTitles`)
 - [x] **Un titre peut réellement devenir regardable** (`docs/00-OVERVIEW.md`, objectif Phase 1 : "lecture d'un fichier vidéo statique unique, pas encore de transcodage") — `AttachMediaAsset` associe une URL statique, `PublishTitle` refuse tant qu'elle n'est pas `READY`
