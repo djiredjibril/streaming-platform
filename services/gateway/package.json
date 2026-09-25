@@ -8,7 +8,9 @@
     "build": "tsc -b",
     "start": "dotenv -e ../../.env -- node dist/index.js",
     "test": "vitest run",
-    "proto:gen": "protoc --plugin=protoc-gen-ts_proto=../../node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/grpc/generated --ts_proto_opt=outputServices=grpc-js,esModuleInterop=true,env=node -I ../../proto ../../proto/identity.proto"
+    "proto:gen": "npm run proto:gen:identity && npm run proto:gen:catalog",
+    "proto:gen:identity": "protoc --plugin=protoc-gen-ts_proto=../../node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/grpc/generated --ts_proto_opt=outputServices=grpc-js,esModuleInterop=true,env=node -I ../../proto ../../proto/identity.proto",
+    "proto:gen:catalog": "protoc --plugin=protoc-gen-ts_proto=../../node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/grpc/generated --ts_proto_opt=outputServices=grpc-js,esModuleInterop=true,env=node -I ../../proto ../../proto/catalog.proto"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.2.3",
@@ -16,9 +18,12 @@
     "@grpc/grpc-js": "^1.12.2",
     "@streaming/shared-logging": "*",
     "fastify": "^5.1.0",
+    "graphql": "^17.0.2",
+    "graphql-yoga": "^5.24.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@streaming/catalog": "*",
     "@streaming/identity": "*",
     "@testcontainers/postgresql": "^10.13.2",
     "@testcontainers/redis": "^10.13.2",

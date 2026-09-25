@@ -1,7 +1,7 @@
 import * as grpc from '@grpc/grpc-js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Logger } from '@streaming/shared-logging';
-import { callUnary } from '../../grpc/identityClient.js';
+import { callUnary } from '../../grpc/callUnary.js';
 import {
   AccountType,
   type Account,

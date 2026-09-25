@@ -2,19 +2,22 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
+import { registerGraphQL } from '../graphql/server.js';
+import type { CatalogServiceClient } from '../grpc/generated/catalog.js';
 import type { IdentityServiceClient } from '../grpc/generated/identity.js';
 import type { Logger } from '@streaming/shared-logging';
 import { registerAuthRoutes } from './routes/auth.js';
 
 export interface GatewayServerDeps {
   identityClient: IdentityServiceClient;
+  catalogClient: CatalogServiceClient;
   logger: Logger;
 }
 
 /**
- * Builds the Fastify instance and registers every REST route. GraphQL
- * (Catalog/Social/Discovery) will be mounted alongside this once those
- * services exist.
+ * Builds the Fastify instance, registers every REST route (/auth/*) and
+ * mounts GraphQL (Catalog, then Social/Discovery once those exist) at
+ * /graphql.
  *
  * `deps.logger` (Pino) is structurally compatible with Fastify's expected
  * logger shape but not identical to its `FastifyBaseLogger` type — cast
@@ -39,5 +42,6 @@ export function buildGatewayServer(deps: GatewayServerDeps): FastifyInstance {
   // No secret needed: we only read/write the refresh token cookie's value verbatim, never sign it.
   fastify.register(fastifyCookie);
   registerAuthRoutes(fastify, deps);
+  registerGraphQL(fastify, deps);
   return fastify;
 }
