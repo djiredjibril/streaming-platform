@@ -246,7 +246,15 @@ export interface Title {
    * called at least once for this Title.
    */
   mediaAssetStatus: MediaAssetStatus;
-  mediaAssetUrl?: string | undefined;
+  mediaAssetUrl?:
+    | string
+    | undefined;
+  /**
+   * Genre names (docs/03-catalog.md's Genre/TitleGenre many-to-many) —
+   * exposed as plain strings, not a Genre message with its own id: nothing
+   * yet looks up a title by genre id, so there's no reason to expose one.
+   */
+  genres: string[];
 }
 
 export interface CreateTitleRequest {
@@ -257,7 +265,15 @@ export interface CreateTitleRequest {
   rating: ContentRating;
   runtimeMinutes?: number | undefined;
   posterUrl?: string | undefined;
-  backdropUrl?: string | undefined;
+  backdropUrl?:
+    | string
+    | undefined;
+  /**
+   * Upserted by name (case-sensitive exact match) — a name not already in
+   * the Genre table is created on the fly, same pattern as Identity's Role
+   * upsert-by-name in CreateProfile.
+   */
+  genres: string[];
 }
 
 export interface GetTitleBySlugRequest {
@@ -288,6 +304,7 @@ function createBaseTitle(): Title {
     status: 0,
     mediaAssetStatus: 0,
     mediaAssetUrl: undefined,
+    genres: [],
   };
 }
 
@@ -331,6 +348,9 @@ export const Title: MessageFns<Title> = {
     }
     if (message.mediaAssetUrl !== undefined) {
       writer.uint32(106).string(message.mediaAssetUrl);
+    }
+    for (const v of message.genres) {
+      writer.uint32(114).string(v!);
     }
     return writer;
   },
@@ -452,6 +472,14 @@ export const Title: MessageFns<Title> = {
             message.mediaAssetUrl = reader.string();
             continue;
           }
+          case 14: {
+            if (tag !== 114) {
+              break;
+            }
+
+            message.genres.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -507,6 +535,9 @@ export const Title: MessageFns<Title> = {
         : isSet(object.media_asset_url)
         ? globalThis.String(object.media_asset_url)
         : undefined,
+      genres: globalThis.Array.isArray(object?.genres)
+        ? object.genres.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -551,6 +582,9 @@ export const Title: MessageFns<Title> = {
     if (message.mediaAssetUrl !== undefined) {
       obj.mediaAssetUrl = message.mediaAssetUrl;
     }
+    if (message.genres?.length) {
+      obj.genres = message.genres;
+    }
     return obj;
   },
 
@@ -572,6 +606,7 @@ export const Title: MessageFns<Title> = {
     message.status = object.status ?? 0;
     message.mediaAssetStatus = object.mediaAssetStatus ?? 0;
     message.mediaAssetUrl = object.mediaAssetUrl ?? undefined;
+    message.genres = object.genres?.map((e) => e) || [];
     return message;
   },
 };
@@ -586,6 +621,7 @@ function createBaseCreateTitleRequest(): CreateTitleRequest {
     runtimeMinutes: undefined,
     posterUrl: undefined,
     backdropUrl: undefined,
+    genres: [],
   };
 }
 
@@ -614,6 +650,9 @@ export const CreateTitleRequest: MessageFns<CreateTitleRequest> = {
     }
     if (message.backdropUrl !== undefined) {
       writer.uint32(66).string(message.backdropUrl);
+    }
+    for (const v of message.genres) {
+      writer.uint32(74).string(v!);
     }
     return writer;
   },
@@ -695,6 +734,14 @@ export const CreateTitleRequest: MessageFns<CreateTitleRequest> = {
             message.backdropUrl = reader.string();
             continue;
           }
+          case 9: {
+            if (tag !== 74) {
+              break;
+            }
+
+            message.genres.push(reader.string());
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -737,6 +784,9 @@ export const CreateTitleRequest: MessageFns<CreateTitleRequest> = {
         : isSet(object.backdrop_url)
         ? globalThis.String(object.backdrop_url)
         : undefined,
+      genres: globalThis.Array.isArray(object?.genres)
+        ? object.genres.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -766,6 +816,9 @@ export const CreateTitleRequest: MessageFns<CreateTitleRequest> = {
     if (message.backdropUrl !== undefined) {
       obj.backdropUrl = message.backdropUrl;
     }
+    if (message.genres?.length) {
+      obj.genres = message.genres;
+    }
     return obj;
   },
 
@@ -782,6 +835,7 @@ export const CreateTitleRequest: MessageFns<CreateTitleRequest> = {
     message.runtimeMinutes = object.runtimeMinutes ?? undefined;
     message.posterUrl = object.posterUrl ?? undefined;
     message.backdropUrl = object.backdropUrl ?? undefined;
+    message.genres = object.genres?.map((e) => e) || [];
     return message;
   },
 };

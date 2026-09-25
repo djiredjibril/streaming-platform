@@ -93,6 +93,10 @@ message Title {
   // called at least once for this Title.
   MediaAssetStatus media_asset_status = 12;
   optional string media_asset_url = 13;
+  // Genre names (docs/03-catalog.md's Genre/TitleGenre many-to-many) —
+  // exposed as plain strings, not a Genre message with its own id: nothing
+  // yet looks up a title by genre id, so there's no reason to expose one.
+  repeated string genres = 14;
 }
 
 message CreateTitleRequest {
@@ -104,6 +108,10 @@ message CreateTitleRequest {
   optional int32 runtime_minutes = 6;
   optional string poster_url = 7;
   optional string backdrop_url = 8;
+  // Upserted by name (case-sensitive exact match) — a name not already in
+  // the Genre table is created on the fly, same pattern as Identity's Role
+  // upsert-by-name in CreateProfile.
+  repeated string genres = 9;
 }
 
 message GetTitleBySlugRequest {

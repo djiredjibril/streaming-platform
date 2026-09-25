@@ -1,5 +1,5 @@
 // Catalog domain model — see /docs/03-catalog.md for the ER diagram and
-// rationale. V1 scope: Title only — Genre/Season/Episode/MediaAsset/Cast are
+// rationale. V1 scope: Title/MediaAsset/Genre — Season/Episode/Cast are
 // separate features layered on later (docs/WORKFLOW.md feature granularity).
 generator client {
   provider = "prisma-client-js"
@@ -64,9 +64,29 @@ model Title {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  mediaAsset MediaAsset?
+  mediaAsset   MediaAsset?
+  titleGenres  TitleGenre[]
 
   @@map("titles")
+}
+
+model Genre {
+  id           Int          @id @default(autoincrement())
+  name         String       @unique
+  titleGenres  TitleGenre[]
+
+  @@map("genres")
+}
+
+model TitleGenre {
+  titleId String @map("title_id")
+  genreId Int    @map("genre_id")
+
+  title Title @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([titleId, genreId])
+  @@map("title_genres")
 }
 
 // One playable file per Title in V1 (no Episode yet, so no per-episode
