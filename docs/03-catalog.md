@@ -142,7 +142,7 @@ Pour la recherche full-text (titre, synopsis, acteurs), deux options :
 
 Catalog est un bon candidat pour être exposé **directement en GraphQL** côté client (par opposition à REST, contrairement à Identity — cf. `docs/00-OVERVIEW.md`, "Les trois styles d'API") car c'est un domaine read-heavy. Le GraphQL est hébergé par la **Gateway** (seul point d'entrée client, `services/gateway/src/graphql/`), qui appelle `CatalogService` en gRPC interne — même schéma que pour Identity/REST, pas de couche supplémentaire au-delà de ce qui existe déjà.
 
-**Implémenté** (`services/gateway/src/graphql/schema.ts`, source de vérité pour ce qui est réellement exposé aujourd'hui) : `type Title` (sans `seasons`, avec `isPlayable`/`videoUrl` en plus — dérivés du `MediaAsset`, absents de la cible ci-dessous puisqu'elle les place sur `Episode` — et `genres` en `[String!]!` plutôt que `[Genre!]!`, cf. plus bas), `Query.title(slug)`, `Mutation.createTitle`/`attachMediaAsset`/`publishTitle`. Le bloc ci-dessous est le schéma **cible** complet de la spec — `browseTitles`/`searchTitles`, `Season`/`Episode`, et le filtrage kids restent à construire.
+**Implémenté** (`services/gateway/src/graphql/schema.ts`, source de vérité pour ce qui est réellement exposé aujourd'hui) : `type Title` (sans `seasons`, avec `isPlayable`/`videoUrl` en plus — dérivés du `MediaAsset`, absents de la cible ci-dessous puisqu'elle les place sur `Episode` — et `genres` en `[String!]!` plutôt que `[Genre!]!`, cf. plus bas), `Query.title(slug)`, `Query.browseTitles` (public, cf. note pagination plus bas), `Mutation.createTitle`/`attachMediaAsset`/`publishTitle`. Le bloc ci-dessous est le schéma **cible** complet de la spec — `searchTitles`, `Season`/`Episode`, et le filtrage kids restent à construire.
 
 ```graphql
 type Title {
@@ -183,6 +183,8 @@ type Query {
 
 **Genre implémenté différemment de la cible ci-dessus** : `Title.genres` est en `[String!]!` (des noms) plutôt qu'en `[Genre!]!` — rien ne cherche encore un titre par id de genre, donc exposer un id serait de la complexité sans usage. `CreateTitle` upserte chaque nom à la volée (`connectOrCreate`), pas de mutation séparée pour gérer le référentiel de genres.
 
+**`browseTitles` implémenté différemment de la cible ci-dessus** : signature `(genre, type, cursor, limit)` plutôt que `(genre, type, page, pageSize): TitleConnection!` — la cible mélangeait deux idées contradictoires (une pagination par `page`/`pageSize`, alors que la section "Bonnes pratiques" ci-dessous recommande explicitement le curseur). L'implémentation suit "Bonnes pratiques", pas la signature affichée ici. `TitleConnection` reste aussi plus simple qu'une vraie Relay Connection : `titles: [Title!]!` + un seul `nextCursor` pour toute la page, pas un curseur par arête (voir `services/gateway/README.md`).
+
 ## Bonnes pratiques
 
 - **Statut `draft`/`published`** dès le départ : jamais exposer un contenu dont le `MediaAsset` n'est pas `ready`, même si les métadonnées existent déjà (évite d'afficher un titre non lisible)
@@ -195,11 +197,12 @@ type Query {
 
 - [x] Schéma DB PostgreSQL — `Title` + `MediaAsset` (un par titre, V1 statique) + `Genre`/`TitleGenre` (`CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` gRPC, `services/catalog/`) ; Season/Episode restent à faire, features séparées
 - [ ] Index GIN full-text search
-- [x] Resolvers GraphQL — `Query.title(slug)`/`Mutation.createTitle` (`services/gateway/src/graphql/`) ; filtrage kids pas encore applicable (pas de profils actifs dans le contexte GraphQL pour l'instant, à ajouter avec `browseTitles`/`searchTitles`)
+- [x] Resolvers GraphQL — `Query.title(slug)`/`browseTitles`/`Mutation.createTitle`/`attachMediaAsset`/`publishTitle` (`services/gateway/src/graphql/`) ; filtrage kids pas encore applicable (pas de profils actifs dans le contexte GraphQL pour l'instant)
 - [x] **Un titre peut réellement devenir regardable** (`docs/00-OVERVIEW.md`, objectif Phase 1 : "lecture d'un fichier vidéo statique unique, pas encore de transcodage") — `AttachMediaAsset` associe une URL statique, `PublishTitle` refuse tant qu'elle n'est pas `READY`
+- [x] **Pagination par curseur** — `BrowseTitles`/`Query.browseTitles`, filtrable par genre/type
 - [ ] Seed de données de test (quelques films/séries fictifs pour développer sans dépendre du pipeline média)
 
-**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle héberge le serveur GraphQL (`services/gateway/src/graphql/`) et appelle Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous est la cible côté client ; `browseTitles`/`searchTitles` et le filtrage kids centralisé viendront avec la pagination et les profils actifs (voir `services/gateway/README.md` pour l'état exact des resolvers implémentés).
+**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle`/`BrowseTitles` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle héberge le serveur GraphQL (`services/gateway/src/graphql/`) et appelle Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous est la cible côté client ; `searchTitles` et le filtrage kids centralisé restent à construire, une fois les profils actifs disponibles dans le contexte GraphQL (voir `services/gateway/README.md` pour l'état exact des resolvers implémentés).
 
 ## Prochaine étape
 

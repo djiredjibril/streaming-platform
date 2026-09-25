@@ -10,3 +10,4 @@
 - feat: GraphQL (`graphql-yoga`) monté à `/graphql`, premier domaine exposé : `Query.title(slug)` (Catalog) et `Mutation.createTitle` (admin uniquement, `requireAdmin()` via `IdentityService.ValidateToken`/`Account.isAdmin`) ; `grpc/catalogClient.ts` ajouté, `callUnary()` extrait de `identityClient.ts` (n'était pas spécifique à Identity) ; `x-correlation-id` propagé sur les appels gRPC des resolvers comme pour les routes REST
 - feat: `Mutation.attachMediaAsset`/`publishTitle` exposés en GraphQL (admin uniquement) — ferme le flux Phase 1 "titre créé → publié → lu" ; `Title.isPlayable`/`videoUrl` dérivés du statut du `MediaAsset`
 - feat: `Title.genres`/`CreateTitleInput.genres` exposés en GraphQL (`[String!]`)
+- feat: `Query.browseTitles` — public, pagination par curseur, filtres genre/type ; `TitleConnection` volontairement pas une Relay Connection stricte (pas de curseur par arête)
