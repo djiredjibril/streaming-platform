@@ -30,6 +30,7 @@ export class InMemoryTitleRepository implements TitleRepository {
       status: 'DRAFT',
       mediaAssetStatus: null,
       mediaAssetUrl: null,
+      genres: input.genres,
     };
     this.titlesById.set(record.id, record);
     return record;

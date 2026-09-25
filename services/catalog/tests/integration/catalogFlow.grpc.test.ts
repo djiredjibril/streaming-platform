@@ -95,6 +95,7 @@ describe('CatalogService (real Postgres + gRPC)', () => {
     releaseYear: 1999,
     rating: ContentRating.R,
     runtimeMinutes: 136,
+    genres: [],
   };
 
   it('createTitle creates a DRAFT title with a derived slug', async () => {
@@ -158,6 +159,35 @@ describe('CatalogService (real Postgres + gRPC)', () => {
       await expect(
         attachMediaAsset({ titleId: '00000000-0000-0000-0000-000000000000', url: 'https://example.com/x.mp4' }),
       ).rejects.toMatchObject({ code: grpc.status.NOT_FOUND });
+    });
+  });
+
+  describe('genres', () => {
+    it('persists genres and reuses an existing genre row by name across titles', async () => {
+      const first = await createTitle({
+        ...movieInput,
+        originalTitle: 'Genre Film One',
+        releaseYear: 2030,
+        genres: ['Action', 'Sci-Fi'],
+      });
+      expect(first.genres).toEqual(['Action', 'Sci-Fi']);
+
+      const second = await createTitle({
+        ...movieInput,
+        originalTitle: 'Genre Film Two',
+        releaseYear: 2031,
+        genres: ['Action', 'Drama'],
+      });
+      expect(second.genres).toEqual(['Action', 'Drama']);
+
+      // Only one "Action" row should exist — the second createTitle reused it by name.
+      const actionGenres = await prisma.genre.findMany({ where: { name: 'Action' } });
+      expect(actionGenres).toHaveLength(1);
+    });
+
+    it('createTitle with no genres defaults to an empty array', async () => {
+      const title = await createTitle({ ...movieInput, originalTitle: 'No Genre Film', releaseYear: 2028 });
+      expect(title.genres).toEqual([]);
     });
   });
 });
