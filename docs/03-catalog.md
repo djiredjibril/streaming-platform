@@ -191,12 +191,13 @@ type Query {
 
 ## État d'avancement
 
-- [x] Schéma DB PostgreSQL — `Title` uniquement pour l'instant (`CreateTitle`/`GetTitleBySlug` gRPC, `services/catalog/`) ; Season/Episode/Genre/MediaAsset restent à faire, features séparées
+- [x] Schéma DB PostgreSQL — `Title` + `MediaAsset` (un par titre, V1 statique) (`CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` gRPC, `services/catalog/`) ; Season/Episode/Genre restent à faire, features séparées
 - [ ] Index GIN full-text search
 - [x] Resolvers GraphQL — `Query.title(slug)`/`Mutation.createTitle` (`services/gateway/src/graphql/`) ; filtrage kids pas encore applicable (pas de profils actifs dans le contexte GraphQL pour l'instant, à ajouter avec `browseTitles`/`searchTitles`)
+- [x] **Un titre peut réellement devenir regardable** (`docs/00-OVERVIEW.md`, objectif Phase 1 : "lecture d'un fichier vidéo statique unique, pas encore de transcodage") — `AttachMediaAsset` associe une URL statique, `PublishTitle` refuse tant qu'elle n'est pas `READY`
 - [ ] Seed de données de test (quelques films/séries fictifs pour développer sans dépendre du pipeline média)
 
-**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle héberge le serveur GraphQL (`services/gateway/src/graphql/`) et appelle Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous est la cible côté client ; seuls `title(slug)` et `createTitle` sont implémentés pour l'instant — `browseTitles`/`searchTitles` et le filtrage kids centralisé viendront avec la pagination et les profils actifs.
+**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle héberge le serveur GraphQL (`services/gateway/src/graphql/`) et appelle Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous est la cible côté client ; `browseTitles`/`searchTitles` et le filtrage kids centralisé viendront avec la pagination et les profils actifs (voir `services/gateway/README.md` pour l'état exact des resolvers implémentés).
 
 ## Prochaine étape
 
