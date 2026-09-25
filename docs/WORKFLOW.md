@@ -14,6 +14,11 @@ Ce processus s'applique à **chaque feature**, backend ou frontend, quel que soi
          │ bon                      │
          ▼                          │
 ┌─────────────────┐                 │
+│ Créer la branche │                 │
+│ <type>/<sujet>   │                 │
+└────────┬─────────┘                │
+         ▼                          │
+┌─────────────────┐                 │
 │    Implémenter   │─────────────────┘
 └────────┬─────────┘   (replanifier)
          ▼
@@ -31,7 +36,14 @@ Ce processus s'applique à **chaque feature**, backend ou frontend, quel que soi
 │        │  │ par thème/lot)     │
 └───┬────┘  └─────────┬──────────┘
     │ (retour test)    ▼
+    │            ┌──────────────────┐
+    │            │ Ouvrir la PR      │
+    │            │ (branche → main)  │
+    │            └─────────┬─────────┘
+    │                      ▼
     └─────────────►  4. Feature suivante
+                     (nouvelle branche
+                      depuis main à jour)
 ```
 
 ## 1. Planifier la feature
@@ -60,7 +72,7 @@ Retour à l'étape 1 avec les objections identifiées explicitement listées. Ne
 
 ### 2.2 — Si le plan est bon
 
-Passage à l'implémentation, en suivant le plan validé. Un écart significatif découvert en cours d'implémentation (le plan s'avère infaisable tel quel) déclenche un retour à l'étape 1, pas une improvisation silencieuse.
+Créer une branche depuis `main` avant d'écrire la moindre ligne de code — jamais de commit de feature directement sur `main` (voir "Branches et Pull Requests" ci-dessous pour la convention de nommage). Puis passage à l'implémentation, en suivant le plan validé. Un écart significatif découvert en cours d'implémentation (le plan s'avère infaisable tel quel) déclenche un retour à l'étape 1, pas une improvisation silencieuse.
 
 ## 3. Tester
 
@@ -75,10 +87,25 @@ Debug. Le correctif est vérifié en re-exécutant les tests, pas seulement en r
 Commit — avec ces règles précises :
 - **Non signé** : pas de signature GPG sur le commit (`git commit` sans `-S`, et vérifier qu'aucune configuration globale (`commit.gpgSign`) ne force la signature sur ce repo)
 - **Par thème/lot** : un commit regroupe un ensemble cohérent de changements liés à une même feature ou un même sous-thème — pas un commit par fichier modifié, et pas non plus un commit fourre-tout mélangeant plusieurs features sans rapport. Le message de commit reflète le thème du lot (ex: `feat(identity): register + login flow with argon2id hashing`)
+- **La documentation est toujours un commit à part** (`docs(...)`), jamais mélangée à un commit de code/tests
+
+Une fois tous les commits de la feature effectués sur la branche, ouvrir la Pull Request (voir section suivante) plutôt que de passer directement à la feature suivante sur la même branche.
+
+## Branches et Pull Requests
+
+**Une branche par feature**, jamais de commit de feature directement sur `main` :
+
+- Nom de branche : `<type>/<sujet-court>` — même préfixe que le type de commit dominant de la feature (`feat/catalog-media-asset`, `fix/monorepo-prisma-isolation`, ...)
+- La branche part de `main` à jour (pull avant de créer la branche si `main` a bougé)
+- Tous les commits de la feature (code, tests, docs — voir la règle "par thème/lot" ci-dessus) vivent sur cette branche
+- Une fois la feature testée et tous les commits en place, ouvrir une Pull Request vers `main` — c'est la fin naturelle d'une feature, pas une étape optionnelle
+- La feature suivante démarre sur une **nouvelle branche depuis `main`**, après le merge de la précédente (jamais empilée sur une branche de feature non mergée, pour éviter les dépendances entre PRs)
+
+**Granularité** : une branche/PR par feature au sens de la section "Note sur la granularité d'une 'feature'" ci-dessous — pas une branche par service entière (trop de commits accumulés, revue trop large, main diverge trop longtemps).
 
 ## 4. Feature suivante
 
-Une fois le commit effectué, passage à la feature suivante en respectant l'ordre de phasage défini dans `00-OVERVIEW.md` (Phase 1 → 2 → 3 → 4, domaines dans l'ordre indiqué à l'intérieur de chaque phase).
+Une fois la PR mergée, passage à la feature suivante (nouvelle branche depuis `main` à jour) en respectant l'ordre de phasage défini dans `00-OVERVIEW.md` (Phase 1 → 2 → 3 → 4, domaines dans l'ordre indiqué à l'intérieur de chaque phase).
 
 ## Note sur la granularité d'une "feature"
 

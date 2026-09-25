@@ -1,8 +1,14 @@
 import * as grpc from '@grpc/grpc-js';
 import { GraphQLError } from 'graphql';
 import { callUnary } from '../grpc/callUnary.js';
-import type { CatalogServiceClient, CreateTitleRequest, Title as ProtoTitle } from '../grpc/generated/catalog.js';
-import { ContentRating, TitleType } from '../grpc/generated/catalog.js';
+import type {
+  AttachMediaAssetRequest,
+  CatalogServiceClient,
+  CreateTitleRequest,
+  PublishTitleRequest,
+  Title as ProtoTitle,
+} from '../grpc/generated/catalog.js';
+import { ContentRating, MediaAssetStatus, TitleType } from '../grpc/generated/catalog.js';
 import type { IdentityServiceClient, ValidateTokenRequest, ValidateTokenResponse } from '../grpc/generated/identity.js';
 import type { Logger } from '../infra/logger.js';
 
@@ -63,6 +69,8 @@ interface GraphQLTitle {
   runtimeMinutes: number | null;
   posterUrl: string | null;
   backdropUrl: string | null;
+  isPlayable: boolean;
+  videoUrl: string | null;
 }
 
 function titleToGraphQL(title: ProtoTitle): GraphQLTitle {
@@ -77,6 +85,8 @@ function titleToGraphQL(title: ProtoTitle): GraphQLTitle {
     runtimeMinutes: title.runtimeMinutes ?? null,
     posterUrl: title.posterUrl ?? null,
     backdropUrl: title.backdropUrl ?? null,
+    isPlayable: title.mediaAssetStatus === MediaAssetStatus.READY,
+    videoUrl: title.mediaAssetUrl ?? null,
   };
 }
 
@@ -121,6 +131,12 @@ function toGraphQLError(error: unknown, logger: Logger, event: string): GraphQLE
     case grpc.status.ALREADY_EXISTS:
       return new GraphQLError(serviceError.details || serviceError.message, {
         extensions: { code: 'ALREADY_EXISTS' },
+      });
+    case grpc.status.NOT_FOUND:
+      return new GraphQLError(serviceError.details || serviceError.message, { extensions: { code: 'NOT_FOUND' } });
+    case grpc.status.FAILED_PRECONDITION:
+      return new GraphQLError(serviceError.details || serviceError.message, {
+        extensions: { code: 'FAILED_PRECONDITION' },
       });
     default:
       logger.error({ event, error: String(error) });
@@ -184,6 +200,40 @@ export const resolvers = {
         return titleToGraphQL(title);
       } catch (error) {
         throw toGraphQLError(error, context.logger, 'create_title_mutation_failed');
+      }
+    },
+
+    async attachMediaAsset(
+      _parent: unknown,
+      args: { input: { titleId: string; url: string } },
+      context: GraphQLContext,
+    ): Promise<GraphQLTitle> {
+      await requireAdmin(context);
+
+      try {
+        const title = await callUnary<AttachMediaAssetRequest, ProtoTitle>(
+          context.catalogClient.attachMediaAsset.bind(context.catalogClient),
+          { titleId: args.input.titleId, url: args.input.url },
+          correlationMetadata(context),
+        );
+        return titleToGraphQL(title);
+      } catch (error) {
+        throw toGraphQLError(error, context.logger, 'attach_media_asset_mutation_failed');
+      }
+    },
+
+    async publishTitle(_parent: unknown, args: { id: string }, context: GraphQLContext): Promise<GraphQLTitle> {
+      await requireAdmin(context);
+
+      try {
+        const title = await callUnary<PublishTitleRequest, ProtoTitle>(
+          context.catalogClient.publishTitle.bind(context.catalogClient),
+          { id: args.id },
+          correlationMetadata(context),
+        );
+        return titleToGraphQL(title);
+      } catch (error) {
+        throw toGraphQLError(error, context.logger, 'publish_title_mutation_failed');
       }
     },
   },

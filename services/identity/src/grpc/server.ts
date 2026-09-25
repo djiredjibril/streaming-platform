@@ -1,5 +1,5 @@
 import * as grpc from '@grpc/grpc-js';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/prisma-client/index.js';
 import type { Redis } from 'ioredis';
 import { PrismaAccountRepository } from '../infra/prismaAccountRepository.js';
 import { PrismaAuditLogRepository } from '../infra/prismaAuditLogRepository.js';

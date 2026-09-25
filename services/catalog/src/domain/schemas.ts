@@ -33,3 +33,11 @@ export const createTitleInputSchema = z
 export type CreateTitleInput = z.infer<typeof createTitleInputSchema>;
 export type TitleTypeInput = z.infer<typeof titleTypeSchema>;
 export type ContentRatingInput = z.infer<typeof contentRatingSchema>;
+
+/** Validates AttachMediaAsset's input shape — `url` just needs to be a well-formed URL; V1 trusts it points at a real playable file (see prisma/schema.prisma's MediaAsset comment). `titleId` isn't format-checked here (not this layer's concern, same as every other id in this domain) — an unknown/malformed one surfaces as TitleNotFoundError either way. */
+export const attachMediaAssetInputSchema = z.object({
+  titleId: z.string().min(1, 'titleId is required'),
+  url: z.string().url(),
+});
+
+export type AttachMediaAssetInput = z.infer<typeof attachMediaAssetInputSchema>;

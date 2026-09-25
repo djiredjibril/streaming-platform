@@ -1,19 +1,22 @@
 import * as grpc from '@grpc/grpc-js';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/prisma-client/index.js';
+import { PrismaMediaAssetRepository } from '../infra/prismaMediaAssetRepository.js';
 import { PrismaTitleRepository } from '../infra/prismaTitleRepository.js';
 import { createCatalogServiceImpl } from './catalogServiceImpl.js';
 import { CatalogServiceService } from './generated/catalog.js';
 
 /**
  * Wires the gRPC server: registers CatalogServiceService against the
- * Prisma-backed TitleRepository. Takes `prisma` as a parameter (rather than
- * importing the singleton directly) so tests can pass a Testcontainers-
- * backed instance — same shape as Identity's grpc/server.ts.
+ * Prisma-backed TitleRepository/MediaAssetRepository. Takes `prisma` as a
+ * parameter (rather than importing the singleton directly) so tests can
+ * pass a Testcontainers-backed instance — same shape as Identity's
+ * grpc/server.ts.
  */
 export function buildCatalogServer(prisma: PrismaClient): grpc.Server {
   const server = new grpc.Server();
   const impl = createCatalogServiceImpl({
     titleRepository: new PrismaTitleRepository(prisma),
+    mediaAssetRepository: new PrismaMediaAssetRepository(prisma),
   });
   server.addService(CatalogServiceService, impl);
   return server;

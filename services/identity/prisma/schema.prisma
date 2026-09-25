@@ -6,12 +6,18 @@ generator client {
   // node_modules/.prisma/client shared by the whole npm workspace — the
   // last service to run `generate` silently overwrites every other
   // service's client (discovered when generating Catalog's client broke
-  // Identity's tests: `this.prisma.account` no longer existed). A
-  // service-local output directory is resolved first by Node for imports
-  // from within this service (node_modules lookup walks up from the
-  // importing file), so `import { PrismaClient } from '@prisma/client'` in
-  // this service's own code keeps working unchanged.
-  output = "../node_modules/@prisma/client"
+  // Identity's tests: `this.prisma.account` no longer existed). Generating
+  // outside node_modules entirely (rather than a service-local
+  // node_modules/@prisma/client) also sidesteps resolution errors this
+  // Prisma version hits with a custom node_modules output path.
+  //
+  // A sibling of `src/` (not nested inside it) so a relative import from
+  // `src/infra/prismaClient.ts` (`../../generated/prisma-client/index.js`)
+  // resolves to the same physical path once compiled to
+  // `dist/infra/prismaClient.js` — `tsc` doesn't copy this plain-JS
+  // generated output into `dist/`, so nesting it under `src/` would break
+  // the built output's relative path.
+  output = "../generated/prisma-client"
 }
 
 datasource db {

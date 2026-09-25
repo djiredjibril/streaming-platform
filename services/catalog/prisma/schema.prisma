@@ -4,10 +4,9 @@
 generator client {
   provider = "prisma-client-js"
   // See services/identity/prisma/schema.prisma's identical comment — a
-  // service-local output avoids the two services' `prisma generate`
-  // silently overwriting each other's client in the shared hoisted
-  // node_modules/.prisma/client.
-  output = "../node_modules/@prisma/client"
+  // sibling of `src/`, not nested inside it, so the relative import from
+  // `src/infra/prismaClient.ts` still resolves once compiled to `dist/`.
+  output = "../generated/prisma-client"
 }
 
 datasource db {
@@ -41,6 +40,13 @@ enum TitleStatus {
   ARCHIVED
 }
 
+enum MediaAssetStatus {
+  PENDING_UPLOAD
+  PROCESSING
+  READY
+  FAILED
+}
+
 model Title {
   id             String        @id @default(uuid())
   slug           String        @unique
@@ -58,5 +64,25 @@ model Title {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
+  mediaAsset MediaAsset?
+
   @@map("titles")
+}
+
+// One playable file per Title in V1 (no Episode yet, so no per-episode
+// asset). `status` defaults to READY: AttachMediaAsset is a stand-in for a
+// real upload pipeline (04-media-pipeline.md, Phase 2) — the caller-provided
+// `url` is trusted to already point at a playable static file, no actual
+// transcoding happens here yet.
+model MediaAsset {
+  id        String           @id @default(uuid())
+  titleId   String           @unique @map("title_id")
+  status    MediaAssetStatus @default(READY)
+  url       String
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  title Title @relation(fields: [titleId], references: [id], onDelete: Cascade)
+
+  @@map("media_assets")
 }

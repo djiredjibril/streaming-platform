@@ -87,12 +87,20 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     return res.json();
   }
 
+  let adminTokenCallCount = 0;
+
+  // remoteAddress: register/login are rate-limited by IP and this helper does
+  // 2 logins per call — a unique fake IP per call keeps callers from eating
+  // into each other's budget on the shared default 127.0.0.1 (same reasoning
+  // as the rate-limiting describe block in authFlow.http.test.ts).
   async function registerAndGetAdminToken(): Promise<string> {
-    const email = `admin-${Date.now()}@example.com`;
+    const remoteAddress = `203.0.114.${++adminTokenCallCount}`;
+    const email = `admin-${Date.now()}-${adminTokenCallCount}@example.com`;
     const password = 'correct-horse-battery';
     const registerRes = await app.inject({
       method: 'POST',
       url: '/auth/register',
+      remoteAddress,
       payload: { email, password, accountType: 'PERSO' },
     });
     const { emailVerificationToken } = registerRes.json();
@@ -101,12 +109,18 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     const accountId = (await app.inject({
       method: 'POST',
       url: '/auth/login',
+      remoteAddress,
       payload: { email, password },
     })).json().account.id;
     await identityPrisma.account.update({ where: { id: accountId }, data: { isAdmin: true } });
 
     // Admin promotion only takes effect on the NEXT login (docs/01-identity.md) — see services/identity's admin-role feature.
-    const loginRes = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      remoteAddress,
+      payload: { email, password },
+    });
     return loginRes.json().accessToken;
   }
 
@@ -125,9 +139,11 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
   });
 
   it('createTitle rejects a non-admin account', async () => {
+    const remoteAddress = '203.0.114.100';
     const registerRes = await app.inject({
       method: 'POST',
       url: '/auth/register',
+      remoteAddress,
       payload: { email: `regular-${Date.now()}@example.com`, password: 'correct-horse-battery', accountType: 'PERSO' },
     });
     await app.inject({
@@ -138,6 +154,7 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     const loginRes = await app.inject({
       method: 'POST',
       url: '/auth/login',
+      remoteAddress,
       payload: { email: registerRes.json().account.email, password: 'correct-horse-battery' },
     });
 
@@ -182,5 +199,76 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
       slug: 'the-matrix-1999',
     });
     expect(publishedQuery.data.title).toEqual({ originalTitle: 'The Matrix', rating: 'R' });
+  });
+
+  const ATTACH_MEDIA_ASSET_MUTATION = `
+    mutation($input: AttachMediaAssetInput!) {
+      attachMediaAsset(input: $input) { id isPlayable videoUrl }
+    }
+  `;
+  const PUBLISH_TITLE_MUTATION = `
+    mutation($id: ID!) {
+      publishTitle(id: $id) { id }
+    }
+  `;
+
+  it('publishTitle rejects a title with no media asset, real end-to-end (no direct Prisma write)', async () => {
+    const accessToken = await registerAndGetAdminToken();
+    const createBody = await graphql(
+      CREATE_TITLE_MUTATION,
+      { input: { type: 'MOVIE', originalTitle: 'Unplayable', synopsis: 'Y', releaseYear: 2022, rating: 'PG', runtimeMinutes: 90 } },
+      { authorization: `Bearer ${accessToken}` },
+    );
+
+    const publishBody = await graphql(
+      PUBLISH_TITLE_MUTATION,
+      { id: createBody.data.createTitle.id },
+      { authorization: `Bearer ${accessToken}` },
+    );
+
+    expect(publishBody.errors[0].extensions.code).toBe('FAILED_PRECONDITION');
+  });
+
+  it('attachMediaAsset then publishTitle makes the title playable and visible via title(slug)', async () => {
+    const accessToken = await registerAndGetAdminToken();
+    const createBody = await graphql(
+      CREATE_TITLE_MUTATION,
+      {
+        input: {
+          type: 'MOVIE',
+          originalTitle: 'Another Film',
+          synopsis: 'Y',
+          releaseYear: 2023,
+          rating: 'PG',
+          runtimeMinutes: 90,
+        },
+      },
+      { authorization: `Bearer ${accessToken}` },
+    );
+    const titleId = createBody.data.createTitle.id;
+
+    const attachBody = await graphql(
+      ATTACH_MEDIA_ASSET_MUTATION,
+      { input: { titleId, url: 'https://example.com/another-film.mp4' } },
+      { authorization: `Bearer ${accessToken}` },
+    );
+    expect(attachBody.errors).toBeUndefined();
+    expect(attachBody.data.attachMediaAsset).toEqual({
+      id: titleId,
+      isPlayable: true,
+      videoUrl: 'https://example.com/another-film.mp4',
+    });
+
+    const publishBody = await graphql(
+      PUBLISH_TITLE_MUTATION,
+      { id: titleId },
+      { authorization: `Bearer ${accessToken}` },
+    );
+    expect(publishBody.errors).toBeUndefined();
+
+    const bySlug = await graphql('query($slug: String!) { title(slug: $slug) { isPlayable videoUrl } }', {
+      slug: 'another-film-2023',
+    });
+    expect(bySlug.data.title).toEqual({ isPlayable: true, videoUrl: 'https://example.com/another-film.mp4' });
   });
 });

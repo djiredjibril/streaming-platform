@@ -27,6 +27,20 @@ service CatalogService {
   // pratiques": never expose a title whose media isn't ready, applied here
   // one step earlier at the metadata level).
   rpc GetTitleBySlug(GetTitleBySlugRequest) returns (Title);
+
+  // Attaches (or replaces) the one static video file for a Title. V1
+  // simplification: no real upload/transcoding pipeline yet
+  // (04-media-pipeline.md is Phase 2) — the asset is marked `READY`
+  // immediately since `url` is assumed to already point at a playable
+  // file. One MediaAsset per Title for now (Episode-level assets are a
+  // separate future feature). Admin-trusted, same boundary as CreateTitle.
+  rpc AttachMediaAsset(AttachMediaAssetRequest) returns (Title);
+
+  // Flips a Title to `published`. Fails with FAILED_PRECONDITION unless
+  // the Title has a `READY` MediaAsset — a title is never published
+  // without something playable behind it (03-catalog.md, "Bonnes
+  // pratiques"). Admin-trusted, same boundary as CreateTitle.
+  rpc PublishTitle(PublishTitleRequest) returns (Title);
 }
 
 enum TitleType {
@@ -53,6 +67,14 @@ enum TitleStatus {
   ARCHIVED = 3;
 }
 
+enum MediaAssetStatus {
+  MEDIA_ASSET_STATUS_UNSPECIFIED = 0;
+  PENDING_UPLOAD = 1;
+  PROCESSING = 2;
+  READY = 3;
+  FAILED = 4;
+}
+
 message Title {
   string id = 1;
   string slug = 2;
@@ -67,6 +89,10 @@ message Title {
   optional string poster_url = 9;
   optional string backdrop_url = 10;
   TitleStatus status = 11;
+  // Absent (MEDIA_ASSET_STATUS_UNSPECIFIED) until AttachMediaAsset has been
+  // called at least once for this Title.
+  MediaAssetStatus media_asset_status = 12;
+  optional string media_asset_url = 13;
 }
 
 message CreateTitleRequest {
@@ -82,4 +108,13 @@ message CreateTitleRequest {
 
 message GetTitleBySlugRequest {
   string slug = 1;
+}
+
+message AttachMediaAssetRequest {
+  string title_id = 1;
+  string url = 2;
+}
+
+message PublishTitleRequest {
+  string id = 1;
 }
