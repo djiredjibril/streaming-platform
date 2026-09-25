@@ -19,6 +19,8 @@ export interface TitleRecord {
   mediaAssetUrl: string | null;
   /** Genre names (docs/03-catalog.md's Genre/TitleGenre many-to-many) — always present, empty array if none tagged. */
   genres: string[];
+  /** Needed to build a BrowseTitles pagination cursor (domain/cursor.ts) — not exposed over gRPC/GraphQL itself. */
+  createdAt: Date;
 }
 
 export interface CreateTitleRecordInput {
@@ -35,6 +37,14 @@ export interface CreateTitleRecordInput {
   genres: string[];
 }
 
+export interface BrowseTitlesFilter {
+  genre?: string;
+  type?: TitleTypeInput;
+  cursor?: { createdAt: Date; id: string };
+  /** Rows requested, NOT capped here — the repository returns exactly this many (or fewer). domain/browseTitles.ts asks for limit+1 to detect a next page. */
+  limit: number;
+}
+
 /**
  * Port implemented by the Prisma-backed adapter in /infra. Kept here (in
  * /domain) so domain functions have zero dependency on Prisma and can be
@@ -45,4 +55,6 @@ export interface TitleRepository {
   findById(id: string): Promise<TitleRecord | null>;
   create(input: CreateTitleRecordInput): Promise<TitleRecord>;
   updateStatus(id: string, status: TitleRecord['status']): Promise<TitleRecord>;
+  /** PUBLISHED titles only, newest first (createdAt desc, id desc as tiebreaker) — see BrowseTitles's comment in /proto/catalog.proto. */
+  browse(filter: BrowseTitlesFilter): Promise<TitleRecord[]>;
 }

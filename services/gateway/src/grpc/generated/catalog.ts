@@ -289,6 +289,29 @@ export interface PublishTitleRequest {
   id: string;
 }
 
+export interface BrowseTitlesRequest {
+  /** Exact genre name match (case-sensitive, same as CreateTitle's genres). */
+  genre?: string | undefined;
+  type?:
+    | TitleType
+    | undefined;
+  /**
+   * Opaque — from a previous BrowseTitlesResponse.next_cursor. Absent for
+   * the first page.
+   */
+  cursor?:
+    | string
+    | undefined;
+  /** Defaults to 20, capped at 50 — see domain/browseTitles.ts. */
+  limit?: number | undefined;
+}
+
+export interface BrowseTitlesResponse {
+  titles: Title[];
+  /** Absent once there are no more pages. */
+  nextCursor?: string | undefined;
+}
+
 function createBaseTitle(): Title {
   return {
     id: "",
@@ -1063,6 +1086,212 @@ export const PublishTitleRequest: MessageFns<PublishTitleRequest> = {
   },
 };
 
+function createBaseBrowseTitlesRequest(): BrowseTitlesRequest {
+  return { genre: undefined, type: undefined, cursor: undefined, limit: undefined };
+}
+
+export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
+  encode(message: BrowseTitlesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.genre !== undefined) {
+      writer.uint32(10).string(message.genre);
+    }
+    if (message.type !== undefined) {
+      writer.uint32(16).int32(message.type);
+    }
+    if (message.cursor !== undefined) {
+      writer.uint32(26).string(message.cursor);
+    }
+    if (message.limit !== undefined) {
+      writer.uint32(32).int32(message.limit);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BrowseTitlesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseBrowseTitlesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.genre = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.type = reader.int32() as any;
+            continue;
+          }
+          case 3: {
+            if (tag !== 26) {
+              break;
+            }
+
+            message.cursor = reader.string();
+            continue;
+          }
+          case 4: {
+            if (tag !== 32) {
+              break;
+            }
+
+            message.limit = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): BrowseTitlesRequest {
+    return {
+      genre: isSet(object.genre) ? globalThis.String(object.genre) : undefined,
+      type: isSet(object.type) ? titleTypeFromJSON(object.type) : undefined,
+      cursor: isSet(object.cursor) ? globalThis.String(object.cursor) : undefined,
+      limit: isSet(object.limit) ? globalThis.Number(object.limit) : undefined,
+    };
+  },
+
+  toJSON(message: BrowseTitlesRequest): unknown {
+    const obj: any = {};
+    if (message.genre !== undefined) {
+      obj.genre = message.genre;
+    }
+    if (message.type !== undefined) {
+      obj.type = titleTypeToJSON(message.type);
+    }
+    if (message.cursor !== undefined) {
+      obj.cursor = message.cursor;
+    }
+    if (message.limit !== undefined) {
+      obj.limit = Math.round(message.limit);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BrowseTitlesRequest>, I>>(base?: I): BrowseTitlesRequest {
+    return BrowseTitlesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BrowseTitlesRequest>, I>>(object: I): BrowseTitlesRequest {
+    const message = createBaseBrowseTitlesRequest();
+    message.genre = object.genre ?? undefined;
+    message.type = object.type ?? undefined;
+    message.cursor = object.cursor ?? undefined;
+    message.limit = object.limit ?? undefined;
+    return message;
+  },
+};
+
+function createBaseBrowseTitlesResponse(): BrowseTitlesResponse {
+  return { titles: [], nextCursor: undefined };
+}
+
+export const BrowseTitlesResponse: MessageFns<BrowseTitlesResponse> = {
+  encode(message: BrowseTitlesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.titles) {
+      Title.encode(v!, writer.uint32(10).fork()).join();
+    }
+    if (message.nextCursor !== undefined) {
+      writer.uint32(18).string(message.nextCursor);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): BrowseTitlesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseBrowseTitlesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.titles.push(Title.decode(reader, reader.uint32()));
+            continue;
+          }
+          case 2: {
+            if (tag !== 18) {
+              break;
+            }
+
+            message.nextCursor = reader.string();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): BrowseTitlesResponse {
+    return {
+      titles: globalThis.Array.isArray(object?.titles) ? object.titles.map((e: any) => Title.fromJSON(e)) : [],
+      nextCursor: isSet(object.nextCursor)
+        ? globalThis.String(object.nextCursor)
+        : isSet(object.next_cursor)
+        ? globalThis.String(object.next_cursor)
+        : undefined,
+    };
+  },
+
+  toJSON(message: BrowseTitlesResponse): unknown {
+    const obj: any = {};
+    if (message.titles?.length) {
+      obj.titles = message.titles.map((e) => Title.toJSON(e));
+    }
+    if (message.nextCursor !== undefined) {
+      obj.nextCursor = message.nextCursor;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<BrowseTitlesResponse>, I>>(base?: I): BrowseTitlesResponse {
+    return BrowseTitlesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<BrowseTitlesResponse>, I>>(object: I): BrowseTitlesResponse {
+    const message = createBaseBrowseTitlesResponse();
+    message.titles = object.titles?.map((e) => Title.fromPartial(e)) || [];
+    message.nextCursor = object.nextCursor ?? undefined;
+    return message;
+  },
+};
+
 /**
  * CatalogService is the source of truth for content metadata (not the video
  * files themselves — see 04-media-pipeline.md). Called internally by the
@@ -1145,6 +1374,24 @@ export const CatalogServiceService = {
     responseSerialize: (value: Title): Buffer => Buffer.from(Title.encode(value).finish()),
     responseDeserialize: (value: Buffer): Title => Title.decode(value),
   },
+  /**
+   * Lists published titles, newest first, with optional genre/type filters.
+   * Cursor-based (03-catalog.md, "Bonnes pratiques": cursor over offset/
+   * limit) — the cursor encodes (created_at, id) so pagination stays
+   * correct even if two titles share a created_at. Never returns a
+   * DRAFT/ARCHIVED title, same rule as GetTitleBySlug. Public: no admin
+   * check, unlike every other RPC on this service.
+   */
+  browseTitles: {
+    path: "/catalog.v1.CatalogService/BrowseTitles" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: BrowseTitlesRequest): Buffer => Buffer.from(BrowseTitlesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): BrowseTitlesRequest => BrowseTitlesRequest.decode(value),
+    responseSerialize: (value: BrowseTitlesResponse): Buffer =>
+      Buffer.from(BrowseTitlesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): BrowseTitlesResponse => BrowseTitlesResponse.decode(value),
+  },
 } as const;
 
 export interface CatalogServiceServer extends UntypedServiceImplementation {
@@ -1182,6 +1429,15 @@ export interface CatalogServiceServer extends UntypedServiceImplementation {
    * pratiques"). Admin-trusted, same boundary as CreateTitle.
    */
   publishTitle: handleUnaryCall<PublishTitleRequest, Title>;
+  /**
+   * Lists published titles, newest first, with optional genre/type filters.
+   * Cursor-based (03-catalog.md, "Bonnes pratiques": cursor over offset/
+   * limit) — the cursor encodes (created_at, id) so pagination stays
+   * correct even if two titles share a created_at. Never returns a
+   * DRAFT/ARCHIVED title, same rule as GetTitleBySlug. Public: no admin
+   * check, unlike every other RPC on this service.
+   */
+  browseTitles: handleUnaryCall<BrowseTitlesRequest, BrowseTitlesResponse>;
 }
 
 export interface CatalogServiceClient extends Client {
@@ -1274,6 +1530,29 @@ export interface CatalogServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: Title) => void,
+  ): ClientUnaryCall;
+  /**
+   * Lists published titles, newest first, with optional genre/type filters.
+   * Cursor-based (03-catalog.md, "Bonnes pratiques": cursor over offset/
+   * limit) — the cursor encodes (created_at, id) so pagination stays
+   * correct even if two titles share a created_at. Never returns a
+   * DRAFT/ARCHIVED title, same rule as GetTitleBySlug. Public: no admin
+   * check, unlike every other RPC on this service.
+   */
+  browseTitles(
+    request: BrowseTitlesRequest,
+    callback: (error: ServiceError | null, response: BrowseTitlesResponse) => void,
+  ): ClientUnaryCall;
+  browseTitles(
+    request: BrowseTitlesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: BrowseTitlesResponse) => void,
+  ): ClientUnaryCall;
+  browseTitles(
+    request: BrowseTitlesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: BrowseTitlesResponse) => void,
   ): ClientUnaryCall;
 }
 

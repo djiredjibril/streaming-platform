@@ -1,9 +1,11 @@
 import * as grpc from '@grpc/grpc-js';
 import type { ServerUnaryCall, sendUnaryData } from '@grpc/grpc-js';
 import { attachMediaAsset } from '../domain/attachMediaAsset.js';
+import { browseTitles } from '../domain/browseTitles.js';
 import { createTitle } from '../domain/createTitle.js';
 import {
   InvalidAttachMediaAssetInputError,
+  InvalidBrowseTitlesInputError,
   InvalidCreateTitleInputError,
   MediaAssetNotReadyError,
   SlugAlreadyExistsError,
@@ -18,6 +20,8 @@ import {
   ContentRating,
   MediaAssetStatus,
   type AttachMediaAssetRequest,
+  type BrowseTitlesRequest,
+  type BrowseTitlesResponse,
   type CreateTitleRequest,
   type GetTitleBySlugRequest,
   type PublishTitleRequest,
@@ -166,6 +170,29 @@ export function createCatalogServiceImpl(deps: CatalogServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async browseTitles(
+      call: ServerUnaryCall<BrowseTitlesRequest, BrowseTitlesResponse>,
+      callback: sendUnaryData<BrowseTitlesResponse>,
+    ): Promise<void> {
+      try {
+        const result = await browseTitles(
+          {
+            genre: call.request.genre,
+            type: call.request.type !== undefined ? titleTypeToDomain[call.request.type] : undefined,
+            cursor: call.request.cursor,
+            limit: call.request.limit,
+          },
+          deps.titleRepository,
+        );
+        callback(null, {
+          titles: result.titles.map(titleToProto),
+          nextCursor: result.nextCursor ?? undefined,
+        });
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -185,6 +212,9 @@ function toGrpcError(error: unknown): grpc.ServiceError {
   }
   if (error instanceof MediaAssetNotReadyError) {
     return buildServiceError(grpc.status.FAILED_PRECONDITION, error.message);
+  }
+  if (error instanceof InvalidBrowseTitlesInputError) {
+    return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');
 }

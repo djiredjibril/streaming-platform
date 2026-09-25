@@ -41,6 +41,14 @@ service CatalogService {
   // without something playable behind it (03-catalog.md, "Bonnes
   // pratiques"). Admin-trusted, same boundary as CreateTitle.
   rpc PublishTitle(PublishTitleRequest) returns (Title);
+
+  // Lists published titles, newest first, with optional genre/type filters.
+  // Cursor-based (03-catalog.md, "Bonnes pratiques": cursor over offset/
+  // limit) — the cursor encodes (created_at, id) so pagination stays
+  // correct even if two titles share a created_at. Never returns a
+  // DRAFT/ARCHIVED title, same rule as GetTitleBySlug. Public: no admin
+  // check, unlike every other RPC on this service.
+  rpc BrowseTitles(BrowseTitlesRequest) returns (BrowseTitlesResponse);
 }
 
 enum TitleType {
@@ -125,4 +133,21 @@ message AttachMediaAssetRequest {
 
 message PublishTitleRequest {
   string id = 1;
+}
+
+message BrowseTitlesRequest {
+  // Exact genre name match (case-sensitive, same as CreateTitle's genres).
+  optional string genre = 1;
+  optional TitleType type = 2;
+  // Opaque — from a previous BrowseTitlesResponse.next_cursor. Absent for
+  // the first page.
+  optional string cursor = 3;
+  // Defaults to 20, capped at 50 — see domain/browseTitles.ts.
+  optional int32 limit = 4;
+}
+
+message BrowseTitlesResponse {
+  repeated Title titles = 1;
+  // Absent once there are no more pages.
+  optional string next_cursor = 2;
 }

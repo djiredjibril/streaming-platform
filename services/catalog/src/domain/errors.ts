@@ -37,3 +37,11 @@ export class MediaAssetNotReadyError extends Error {
     this.name = 'MediaAssetNotReadyError';
   }
 }
+
+/** Thrown when BrowseTitles' input fails Zod validation, OR when `cursor` doesn't decode to a well-formed (createdAt, id) pair (domain/cursor.ts) — a malformed/tampered cursor is an input error, not a server error. Mapped to gRPC INVALID_ARGUMENT. */
+export class InvalidBrowseTitlesInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidBrowseTitlesInputError';
+  }
+}

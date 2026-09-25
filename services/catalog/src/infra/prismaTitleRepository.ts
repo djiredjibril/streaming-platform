@@ -1,5 +1,10 @@
 import type { PrismaClient } from '../../generated/prisma-client/index.js';
-import type { CreateTitleRecordInput, TitleRecord, TitleRepository } from '../domain/titleRepository.js';
+import type {
+  BrowseTitlesFilter,
+  CreateTitleRecordInput,
+  TitleRecord,
+  TitleRepository,
+} from '../domain/titleRepository.js';
 
 /** Includes the (at most one) MediaAsset row and tagged genres so every TitleRecord carries them without a separate query. */
 const includeMediaAssetAndGenres = {
@@ -55,6 +60,31 @@ export class PrismaTitleRepository implements TitleRepository {
     });
     return toTitleRecord(title);
   }
+
+  async browse(filter: BrowseTitlesFilter): Promise<TitleRecord[]> {
+    const titles = await this.prisma.title.findMany({
+      where: {
+        status: 'PUBLISHED',
+        ...(filter.type ? { type: filter.type } : {}),
+        ...(filter.genre ? { titleGenres: { some: { genre: { name: filter.genre } } } } : {}),
+        // Keyset pagination: strictly older than the cursor row, tiebroken
+        // by id — matches the ORDER BY below exactly, which is what keeps
+        // this correct even when several titles share a `createdAt`.
+        ...(filter.cursor
+          ? {
+              OR: [
+                { createdAt: { lt: filter.cursor.createdAt } },
+                { createdAt: filter.cursor.createdAt, id: { lt: filter.cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: filter.limit,
+      include: includeMediaAssetAndGenres,
+    });
+    return titles.map(toTitleRecord);
+  }
 }
 
 function toTitleRecord(title: {
@@ -69,6 +99,7 @@ function toTitleRecord(title: {
   posterUrl: string | null;
   backdropUrl: string | null;
   status: string;
+  createdAt: Date;
   mediaAsset: { status: string; url: string } | null;
   titleGenres: { genre: { name: string } }[];
 }): TitleRecord {
@@ -84,6 +115,7 @@ function toTitleRecord(title: {
     posterUrl: title.posterUrl,
     backdropUrl: title.backdropUrl,
     status: title.status as TitleRecord['status'],
+    createdAt: title.createdAt,
     mediaAssetStatus: (title.mediaAsset?.status as TitleRecord['mediaAssetStatus']) ?? null,
     mediaAssetUrl: title.mediaAsset?.url ?? null,
     genres: title.titleGenres.map((tg) => tg.genre.name),
