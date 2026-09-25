@@ -298,4 +298,38 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     expect(createBody.errors).toBeUndefined();
     expect(createBody.data.createTitle.genres).toEqual(['Action', 'Sci-Fi']);
   });
+
+  it('browseTitles is public and paginates real published titles end-to-end', async () => {
+    const accessToken = await registerAndGetAdminToken();
+
+    async function createAndPublish(originalTitle: string, releaseYear: number) {
+      const createBody = await graphql(
+        CREATE_TITLE_MUTATION,
+        { input: { type: 'MOVIE', originalTitle, synopsis: 'Y', releaseYear, rating: 'PG', runtimeMinutes: 90 } },
+        { authorization: `Bearer ${accessToken}` },
+      );
+      const titleId = createBody.data.createTitle.id;
+      await graphql(
+        ATTACH_MEDIA_ASSET_MUTATION,
+        { input: { titleId, url: 'https://example.com/v.mp4' } },
+        { authorization: `Bearer ${accessToken}` },
+      );
+      await graphql(PUBLISH_TITLE_MUTATION, { id: titleId }, { authorization: `Bearer ${accessToken}` });
+      return titleId;
+    }
+
+    const first = await createAndPublish('Browse GraphQL A', 2016);
+    const second = await createAndPublish('Browse GraphQL B', 2017);
+
+    // No auth header at all — browseTitles is a public query.
+    const page1 = await graphql('query { browseTitles(limit: 1) { titles { id } nextCursor } }');
+    expect(page1.errors).toBeUndefined();
+    expect(page1.data.browseTitles.titles).toEqual([{ id: second }]);
+    expect(page1.data.browseTitles.nextCursor).toBeTruthy();
+
+    const page2 = await graphql('query($cursor: String) { browseTitles(limit: 1, cursor: $cursor) { titles { id } } }', {
+      cursor: page1.data.browseTitles.nextCursor,
+    });
+    expect(page2.data.browseTitles.titles).toEqual([{ id: first }]);
+  });
 });

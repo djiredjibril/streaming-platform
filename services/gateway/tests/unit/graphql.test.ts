@@ -145,6 +145,61 @@ describe('Query.title', () => {
   });
 });
 
+describe('Query.browseTitles', () => {
+  it('requires no auth and maps titles/nextCursor', async () => {
+    const browseTitles = vi.fn(() => ({ response: { titles: [protoTitle], nextCursor: 'abc' } }));
+    const catalogClient = fakeClient<CatalogServiceClient>({ browseTitles });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query { browseTitles { titles { slug } nextCursor } }');
+
+    expect(body.errors).toBeUndefined();
+    expect(body.data.browseTitles).toEqual({ titles: [{ slug: 'the-matrix-1999' }], nextCursor: 'abc' });
+  });
+
+  it('returns null nextCursor on the last page', async () => {
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      browseTitles: () => ({ response: { titles: [], nextCursor: undefined } }),
+    });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query { browseTitles { titles { id } nextCursor } }');
+
+    expect(body.data.browseTitles).toEqual({ titles: [], nextCursor: null });
+  });
+
+  it('passes genre/type/cursor/limit through to Catalog', async () => {
+    const browseTitles = vi.fn(() => ({ response: { titles: [], nextCursor: undefined } }));
+    const catalogClient = fakeClient<CatalogServiceClient>({ browseTitles });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    await graphqlRequest(
+      app,
+      `query($genre: String, $type: TitleType, $cursor: String, $limit: Int) {
+        browseTitles(genre: $genre, type: $type, cursor: $cursor, limit: $limit) { nextCursor }
+      }`,
+      { genre: 'Action', type: 'SERIES', cursor: 'xyz', limit: 5 },
+    );
+
+    expect(browseTitles).toHaveBeenCalledWith(
+      expect.objectContaining({ genre: 'Action', type: 2 /* TitleType.SERIES */, cursor: 'xyz', limit: 5 }),
+    );
+  });
+
+  it('maps INVALID_ARGUMENT (malformed cursor) to a typed error', async () => {
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      browseTitles: () => ({ error: serviceError(grpc.status.INVALID_ARGUMENT, 'Malformed cursor') }),
+    });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($cursor: String) { browseTitles(cursor: $cursor) { nextCursor } }', {
+      cursor: 'garbage',
+    });
+
+    expect(body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+  });
+});
+
 const CREATE_TITLE_MUTATION = `
   mutation($input: CreateTitleInput!) {
     createTitle(input: $input) {
