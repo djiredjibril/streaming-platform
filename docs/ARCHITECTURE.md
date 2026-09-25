@@ -6,8 +6,8 @@ Ce document complète `00-OVERVIEW.md` (qui pose la règle) avec du concret : un
 
 | Qui parle à qui | Protocole | Pourquoi |
 |---|---|---|
-| Navigateur → Gateway | **REST** pour l'auth/compte, **GraphQL** pour le reste (Catalog/Social/Discovery, pas encore construits) | Voir `00-OVERVIEW.md`, "Les trois styles d'API" — en résumé, GraphQL gère mal les cookies `httpOnly` nécessaires au refresh token |
-| Gateway → services internes (Identity, futur Billing/Catalog/...) | **gRPC**, toujours | Rapide, typé, jamais exposé au navigateur |
+| Navigateur → Gateway | **REST** pour l'auth/compte, **GraphQL** pour le reste (Catalog implémenté ; Social/Discovery pas encore construits) | Voir `00-OVERVIEW.md`, "Les trois styles d'API" — en résumé, GraphQL gère mal les cookies `httpOnly` nécessaires au refresh token |
+| Gateway → services internes (Identity, Catalog, futur Billing/...) | **gRPC**, toujours | Rapide, typé, jamais exposé au navigateur — vrai aussi pour Catalog malgré son exposition GraphQL côté client, cf. §2bis |
 
 Point clé à ne pas perdre de vue : **le choix REST vs GraphQL ne concerne que la façade client de la Gateway**. En interne, tout passe par gRPC, sans exception. La Gateway ne contient aucune logique métier — elle valide la forme d'une requête, appelle un RPC, retraduit la réponse.
 
@@ -66,9 +66,40 @@ Côté Identity, le mapping symétrique (erreur domaine → code gRPC) vit dans 
 
 Chaque requête HTTP entrante à la Gateway obtient un id (réutilise `x-correlation-id` si le client l'envoie déjà, sinon `crypto.randomUUID()` — `genReqId` dans `http/server.ts`). Cet id devient `request.id`, sert de valeur pour toutes les métadonnées `x-correlation-id` envoyées vers Identity, et apparaît sous la clé `correlation_id` dans les logs des deux services (`requestIdLogLabel` côté Gateway, logger enfant Pino côté Identity — `grpc/correlationId.ts`). Résultat : une seule valeur à chercher dans les logs pour reconstituer tout ce qu'une requête utilisateur a déclenché, à travers les deux services. Le patron (metadata gRPC + logger enfant) est celui à reprendre tel quel quand Billing/Delivery/etc. existeront.
 
+## 2bis. Un parcours réel : `Mutation.createTitle` (GraphQL → gRPC)
+
+Même patron que `POST /auth/login`, avec un protocole client différent (GraphQL au lieu de REST) et une étape en plus : une vérification d'autorisation qui appelle un *second* service interne (Identity) avant même de toucher au premier (Catalog).
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Gateway as Gateway (Fastify + Yoga)
+    participant Identity as Identity (gRPC server)
+    participant Catalog as Catalog (gRPC server)
+    participant DB as PostgreSQL (catalog)
+
+    Browser->>Gateway: POST /graphql {query: createTitle, Authorization: Bearer ...}
+    Note over Gateway: graphql/server.ts<br/>yoga.fetch() depuis request.body déjà parsé par Fastify
+    Gateway->>Identity: gRPC ValidateToken(accessToken)<br/>metadata: x-correlation-id
+    Identity-->>Gateway: ValidateTokenResponse {valid, isAdmin}
+    Note over Gateway: graphql/resolvers.ts requireAdmin()<br/>isAdmin=false -> GraphQLError FORBIDDEN, s'arrête là
+    Gateway->>Catalog: gRPC CreateTitle(CreateTitleRequest)<br/>metadata: x-correlation-id
+    Note over Catalog: grpc/catalogServiceImpl.ts<br/>traduit proto -> domaine
+    Catalog->>DB: findBySlug (collision), create
+    DB-->>Catalog: 
+    Note over Catalog: domain/createTitle.ts<br/>slugify() + statut DRAFT forcé
+    Catalog-->>Gateway: Title {id, slug, status: DRAFT, ...}
+    Gateway-->>Browser: 200 {data: {createTitle: {...}}}
+```
+
+**Ce que ce parcours illustre de plus par rapport à `/auth/login`** :
+- **La Gateway peut appeler plusieurs services internes pour une seule requête client** — ici Identity pour l'autorisation, puis Catalog pour l'action elle-même. C'est le rôle d'agrégation mentionné dans `00-OVERVIEW.md` ("GraphQL... agrège plusieurs domaines en une requête").
+- **`CatalogService.CreateTitle` ne revalide pas le token lui-même** — il fait confiance à la Gateway (seule à pouvoir l'appeler, jamais exposé au navigateur), la même frontière de confiance déjà établie pour `accountId` sur `CreateProfile` côté Identity.
+- **`x-correlation-id` est propagé sur les DEUX appels gRPC** (Identity puis Catalog) avec la même valeur — voir "Traçabilité" ci-dessus, même mécanique, un appelant de plus.
+
 ## 3. Pourquoi chaque service génère ses propres stubs gRPC
 
-`proto/identity.proto` est la seule source de vérité. Identity (serveur) et la Gateway (client) exécutent chacun leur propre `npm run proto:gen` (`protoc` + `ts-proto`) vers leur propre `src/grpc/generated/`, plutôt que de partager un package `@streaming/proto-generated`.
+`/proto/*.proto` (un fichier par domaine : `identity.proto`, `catalog.proto`) sont la seule source de vérité. Chaque serveur (Identity, Catalog) et la Gateway (client des deux) exécutent chacun leur propre `npm run proto:gen` (`protoc` + `ts-proto`) vers leur propre `src/grpc/generated/`, plutôt que de partager un package `@streaming/proto-generated`.
 
 **Compromis assumé** : ça duplique la génération de code, mais ça garde chaque service déployable indépendamment sans dépendre d'un package interne à republier à chaque changement de contrat — cohérent avec le principe "chaque domaine est un service isolé" (`services/AGENT.md` §1.3). Le vrai contrat partagé reste le fichier `.proto` lui-même, versionné dans `/proto`.
 
@@ -99,8 +130,9 @@ Chaque requête HTTP entrante à la Gateway obtient un id (réutilise `x-correla
 
 | Package | Rôle | Pourquoi celui-ci |
 |---|---|---|
-| **Fastify** | Serveur HTTP | Recommandé par `services/AGENT.md` — portera aussi GraphQL Yoga plus tard (Catalog/Social/Discovery) sans changer de socle HTTP |
+| **Fastify** | Serveur HTTP | Recommandé par `services/AGENT.md` — porte aussi GraphQL Yoga (Catalog, puis Social/Discovery) sans changer de socle HTTP |
 | **`@fastify/cookie`** | Lecture/écriture du cookie `refresh_token` | Plugin officiel Fastify, gère `httpOnly`/`sameSite`/`path`/expiration nativement — pas besoin de parser les headers `Cookie`/`Set-Cookie` à la main |
+| **graphql-yoga** + **graphql** | Serveur GraphQL | Recommandé par `services/AGENT.md`. Monté via son entrée Fetch-API `yoga.fetch()`, pas `yoga.handle(request.raw, ...)` — ce dernier lit le corps depuis le flux Node brut, déjà consommé par le parseur JSON de Fastify au moment où un handler de route s'exécute (bug réel rencontré en écrivant les tests de `createTitle` : "Unexpected end of JSON input" sur chaque requête) |
 
 ## 5. Prisma vs Drizzle — pourquoi Prisma a été choisi
 
@@ -113,8 +145,15 @@ Chaque requête HTTP entrante à la Gateway obtient un id (réutilise `x-correla
 
 **Ce que Drizzle aurait apporté** (pour la prochaine fois qu'on hésite) : des requêtes plus proches du SQL brut, un démarrage à froid plus léger, moins de "magie" (pas de moteur Rust binaire séparé). Pour ce projet — orienté apprentissage + livraison rapide sur plusieurs services au schéma CRUD-heavy — la productivité de Prisma (migrations, Prisma Studio, DX) l'a emporté. Rien n'empêche un service futur (ex: `07-discovery` et ses requêtes de similarité, déjà noté comme cas particulier dans `01-identity.md`) d'utiliser Drizzle ou du SQL brut si Prisma devient trop limitant pour ce cas précis.
 
-## 6. Ce qui n'est pas encore tranché
+## 6. Un piège de monorepo : le client Prisma généré est partagé par défaut
 
-- **GraphQL Yoga** : choisi dans `services/AGENT.md` mais pas encore implémenté (aucun service GraphQL-facing n'existe — Catalog est la prochaine étape de la Phase 1)
+Chaque service (Identity, Catalog, ...) a son propre `prisma/schema.prisma`, mais `npm workspaces` hoiste `node_modules` à la racine — sans configuration, `prisma generate` de n'importe quel service écrit dans le même `node_modules/.prisma/client` partagé, et le dernier service à générer écrase silencieusement le client des autres (`this.prisma.account` disparaît si Catalog génère après Identity). Rencontré concrètement en construisant Catalog.
+
+**Fix** : chaque `schema.prisma` fixe `generator client { output = "../node_modules/@prisma/client" }` — un dossier `node_modules/@prisma/client` local au service, que Node résout en priorité sur celui de la racine (la résolution de module remonte depuis le fichier important, donc s'arrête dès qu'elle en trouve un). `import { PrismaClient } from '@prisma/client'` continue de fonctionner sans changement dans le code de chaque service. Le seul endroit qui a légitimement besoin du client d'un *autre* service (le test d'intégration de la Gateway, qui construit son propre `PrismaClient` pour `buildIdentityServer`/`buildCatalogServer`) passe par un export dédié (`createPrismaClient()` dans `infra/prismaClient.ts` de chaque service) plutôt que d'importer `@prisma/client` directement — cet import n'est résolvable que depuis l'intérieur du service concerné.
+
+**Piège additionnel** : `npm install` "nettoie" ce que npm ne reconnaît pas comme géré par lui dans `node_modules` — donc un dossier `@prisma/client` généré manuellement peut disparaître au prochain `npm install` ailleurs dans le monorepo. Chaque service a un script `postinstall: "prisma generate"` pour se régénérer automatiquement (ne nécessite pas de connexion DB, juste le schéma).
+
+## 7. Ce qui n'est pas encore tranché
+
 - **BullMQ + Redis** : prévu pour `04-media-pipeline.md`, pas encore utilisé
 - **MinIO** : infra déjà provisionnée (`docker-compose.yml`), pas encore de client S3 dans le code

@@ -138,9 +138,11 @@ Pour la recherche full-text (titre, synopsis, acteurs), deux options :
 
 **Recommandation V1** : PostgreSQL `tsvector` + index GIN. Tu upgrades vers un moteur dédié seulement si le besoin se manifeste (YAGNI appliqué).
 
-## Contrat API — GraphQL (exposé directement, pas besoin de gRPC ici)
+## Contrat API — GraphQL
 
-Catalog est un bon candidat pour être exposé **directement en GraphQL** aux clients (pas de couche gRPC intermédiaire nécessaire, contrairement à Identity) car c'est un domaine read-heavy, orienté client, sans besoin d'appels internes fréquents par d'autres services.
+Catalog est un bon candidat pour être exposé **directement en GraphQL** côté client (par opposition à REST, contrairement à Identity — cf. `docs/00-OVERVIEW.md`, "Les trois styles d'API") car c'est un domaine read-heavy. Le GraphQL est hébergé par la **Gateway** (seul point d'entrée client, `services/gateway/src/graphql/`), qui appelle `CatalogService` en gRPC interne — même schéma que pour Identity/REST, pas de couche supplémentaire au-delà de ce qui existe déjà.
+
+**Implémenté** (`services/gateway/src/graphql/schema.ts`, source de vérité pour ce qui est réellement exposé aujourd'hui) : uniquement `type Title` (sans `genres`/`seasons`), `Query.title(slug)` et `Mutation.createTitle`. Le bloc ci-dessous est le schéma **cible** complet de la spec — `browseTitles`/`searchTitles`, `Season`/`Episode`, et le filtrage kids restent à construire.
 
 ```graphql
 type Title {
@@ -191,10 +193,10 @@ type Query {
 
 - [x] Schéma DB PostgreSQL — `Title` uniquement pour l'instant (`CreateTitle`/`GetTitleBySlug` gRPC, `services/catalog/`) ; Season/Episode/Genre/MediaAsset restent à faire, features séparées
 - [ ] Index GIN full-text search
-- [ ] Resolvers GraphQL avec filtrage kids centralisé
+- [x] Resolvers GraphQL — `Query.title(slug)`/`Mutation.createTitle` (`services/gateway/src/graphql/`) ; filtrage kids pas encore applicable (pas de profils actifs dans le contexte GraphQL pour l'instant, à ajouter avec `browseTitles`/`searchTitles`)
 - [ ] Seed de données de test (quelques films/séries fictifs pour développer sans dépendre du pipeline média)
 
-**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle hébergera le serveur GraphQL et appellera Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous reste la cible côté client ; elle n'est pas encore implémentée (feature Gateway à venir).
+**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle héberge le serveur GraphQL (`services/gateway/src/graphql/`) et appelle Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous est la cible côté client ; seuls `title(slug)` et `createTitle` sont implémentés pour l'instant — `browseTitles`/`searchTitles` et le filtrage kids centralisé viendront avec la pagination et les profils actifs.
 
 ## Prochaine étape
 
