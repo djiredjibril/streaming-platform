@@ -271,4 +271,31 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     });
     expect(bySlug.data.title).toEqual({ isPlayable: true, videoUrl: 'https://example.com/another-film.mp4' });
   });
+
+  it('createTitle with genres, real end-to-end through GraphQL -> gRPC -> Postgres', async () => {
+    const accessToken = await registerAndGetAdminToken();
+
+    const createBody = await graphql(
+      `
+        mutation($input: CreateTitleInput!) {
+          createTitle(input: $input) { slug genres }
+        }
+      `,
+      {
+        input: {
+          type: 'MOVIE',
+          originalTitle: 'Genre Film',
+          synopsis: 'Y',
+          releaseYear: 2024,
+          rating: 'PG',
+          runtimeMinutes: 90,
+          genres: ['Action', 'Sci-Fi', 'Action'], // duplicate, deduped by the domain layer
+        },
+      },
+      { authorization: `Bearer ${accessToken}` },
+    );
+
+    expect(createBody.errors).toBeUndefined();
+    expect(createBody.data.createTitle.genres).toEqual(['Action', 'Sci-Fi']);
+  });
 });
