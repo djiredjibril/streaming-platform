@@ -81,6 +81,7 @@ function accountToProto(account: AccountRecord): ProtoAccount {
     email: account.email,
     accountType: accountTypeToProto[account.accountType],
     status: account.status,
+    isAdmin: account.isAdmin,
   };
 }
 
@@ -228,11 +229,11 @@ export function createIdentityServiceImpl(deps: IdentityServiceDeps) {
       callback: sendUnaryData<ValidateTokenResponse>,
     ): Promise<void> {
       try {
-        const { accountId } = await validateAccessToken(call.request.accessToken, deps.jwtSecret);
-        callback(null, { valid: true, accountId });
+        const { accountId, isAdmin } = await validateAccessToken(call.request.accessToken, deps.jwtSecret);
+        callback(null, { valid: true, accountId, isAdmin });
       } catch (error) {
         if (error instanceof InvalidAccessTokenError) {
-          callback(null, { valid: false, accountId: '' });
+          callback(null, { valid: false, accountId: '', isAdmin: false });
           return;
         }
         callback(toGrpcError(error), null);

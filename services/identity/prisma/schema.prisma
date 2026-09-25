@@ -46,6 +46,12 @@ model Account {
   passwordHash String?       @map("password_hash")
   accountType  AccountType   @map("account_type")
   status       AccountStatus @default(PENDING_VERIFICATION)
+  // Minimal admin role (see docs/01-identity.md, "État d'avancement"): no self-service
+  // path sets this to true — only a direct DB write, documented in README.md, until a
+  // real admin-management feature exists. Embedded in the JWT at Login/RefreshToken
+  // (see domain/tokens.ts) so ValidateToken stays a pure signature check with no extra
+  // DB lookup on the system's most frequently called RPC.
+  isAdmin      Boolean       @default(false) @map("is_admin")
   // V1 mock email verification (see /proto/identity.proto, VerifyEmail):
   // hash of the token returned directly by Register instead of emailed.
   emailVerificationTokenHash String?   @map("email_verification_token_hash")

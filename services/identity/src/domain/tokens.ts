@@ -28,6 +28,13 @@ export function hashOpaqueToken(raw: string): string {
 
 export interface AccessTokenPayload {
   accountId: string;
+  /**
+   * Minimal admin role, embedded at sign time rather than looked up on
+   * every ValidateToken call — see prisma/schema.prisma's Account.isAdmin
+   * comment for why. Means a promotion to admin only takes effect on the
+   * account's next Login/RefreshToken, not immediately.
+   */
+  isAdmin: boolean;
 }
 
 /** Signs a short-lived JWT access token (HS256). `secret` is injected — never read from env inside /domain. */
@@ -36,7 +43,7 @@ export async function signAccessToken(
   secret: string,
   expiresInSeconds: number,
 ): Promise<string> {
-  return new SignJWT({ sub: payload.accountId })
+  return new SignJWT({ sub: payload.accountId, admin: payload.isAdmin })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime(Math.floor(Date.now() / 1000) + expiresInSeconds)
@@ -49,5 +56,5 @@ export async function verifyAccessToken(token: string, secret: string): Promise<
   if (typeof payload.sub !== 'string') {
     throw new Error('Malformed access token: missing sub claim');
   }
-  return { accountId: payload.sub };
+  return { accountId: payload.sub, isAdmin: payload.admin === true };
 }

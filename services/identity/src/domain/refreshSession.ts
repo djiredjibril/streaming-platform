@@ -66,7 +66,11 @@ export async function refreshSession(
 
   await deps.refreshTokenRepository.revoke(existing.id);
 
-  const accessToken = await signAccessToken({ accountId: account.id }, deps.jwtSecret, ACCESS_TOKEN_TTL_SECONDS);
+  const accessToken = await signAccessToken(
+    { accountId: account.id, isAdmin: account.isAdmin },
+    deps.jwtSecret,
+    ACCESS_TOKEN_TTL_SECONDS,
+  );
   const newRefreshToken = generateOpaqueToken();
   await deps.refreshTokenRepository.create({
     accountId: account.id,

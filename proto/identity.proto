@@ -78,6 +78,10 @@ message Account {
   string email = 2;
   AccountType account_type = 3;
   string status = 4;
+  // Minimal admin role (docs/01-identity.md, "État d'avancement") — no
+  // self-service path sets this, see Account.isAdmin's comment in
+  // prisma/schema.prisma.
+  bool is_admin = 5;
 }
 
 message VerifyEmailRequest {
@@ -108,6 +112,11 @@ message ValidateTokenRequest {
 message ValidateTokenResponse {
   bool valid = 1;
   string account_id = 2;
+  // Read from the JWT claim set at Login/RefreshToken time, not looked up
+  // fresh here — see Account.is_admin's comment above for why. A promotion
+  // to admin only takes effect on the caller's next Login/RefreshToken
+  // (≤ ACCESS_TOKEN_TTL_SECONDS later), not immediately.
+  bool is_admin = 3;
 }
 
 message GetAccountRequest {

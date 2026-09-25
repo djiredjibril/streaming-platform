@@ -3,6 +3,7 @@ import { verifyAccessToken } from './tokens.js';
 
 export interface ValidateAccessTokenResult {
   accountId: string;
+  isAdmin: boolean;
 }
 
 /**

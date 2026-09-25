@@ -97,6 +97,12 @@ export interface Account {
   email: string;
   accountType: AccountType;
   status: string;
+  /**
+   * Minimal admin role (docs/01-identity.md, "État d'avancement") — no
+   * self-service path sets this, see Account.isAdmin's comment in
+   * prisma/schema.prisma.
+   */
+  isAdmin: boolean;
 }
 
 export interface VerifyEmailRequest {
@@ -127,6 +133,13 @@ export interface ValidateTokenRequest {
 export interface ValidateTokenResponse {
   valid: boolean;
   accountId: string;
+  /**
+   * Read from the JWT claim set at Login/RefreshToken time, not looked up
+   * fresh here — see Account.is_admin's comment above for why. A promotion
+   * to admin only takes effect on the caller's next Login/RefreshToken
+   * (≤ ACCESS_TOKEN_TTL_SECONDS later), not immediately.
+   */
+  isAdmin: boolean;
 }
 
 export interface GetAccountRequest {
@@ -431,7 +444,7 @@ export const AuthResponse: MessageFns<AuthResponse> = {
 };
 
 function createBaseAccount(): Account {
-  return { id: "", email: "", accountType: 0, status: "" };
+  return { id: "", email: "", accountType: 0, status: "", isAdmin: false };
 }
 
 export const Account: MessageFns<Account> = {
@@ -447,6 +460,9 @@ export const Account: MessageFns<Account> = {
     }
     if (message.status !== "") {
       writer.uint32(34).string(message.status);
+    }
+    if (message.isAdmin !== false) {
+      writer.uint32(40).bool(message.isAdmin);
     }
     return writer;
   },
@@ -496,6 +512,14 @@ export const Account: MessageFns<Account> = {
             message.status = reader.string();
             continue;
           }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.isAdmin = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -518,6 +542,11 @@ export const Account: MessageFns<Account> = {
         ? accountTypeFromJSON(object.account_type)
         : 0,
       status: isSet(object.status) ? globalThis.String(object.status) : "",
+      isAdmin: isSet(object.isAdmin)
+        ? globalThis.Boolean(object.isAdmin)
+        : isSet(object.is_admin)
+        ? globalThis.Boolean(object.is_admin)
+        : false,
     };
   },
 
@@ -535,6 +564,9 @@ export const Account: MessageFns<Account> = {
     if (message.status !== "") {
       obj.status = message.status;
     }
+    if (message.isAdmin !== false) {
+      obj.isAdmin = message.isAdmin;
+    }
     return obj;
   },
 
@@ -547,6 +579,7 @@ export const Account: MessageFns<Account> = {
     message.email = object.email ?? "";
     message.accountType = object.accountType ?? 0;
     message.status = object.status ?? "";
+    message.isAdmin = object.isAdmin ?? false;
     return message;
   },
 };
@@ -990,7 +1023,7 @@ export const ValidateTokenRequest: MessageFns<ValidateTokenRequest> = {
 };
 
 function createBaseValidateTokenResponse(): ValidateTokenResponse {
-  return { valid: false, accountId: "" };
+  return { valid: false, accountId: "", isAdmin: false };
 }
 
 export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
@@ -1000,6 +1033,9 @@ export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
     }
     if (message.accountId !== "") {
       writer.uint32(18).string(message.accountId);
+    }
+    if (message.isAdmin !== false) {
+      writer.uint32(24).bool(message.isAdmin);
     }
     return writer;
   },
@@ -1033,6 +1069,14 @@ export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
             message.accountId = reader.string();
             continue;
           }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.isAdmin = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -1053,6 +1097,11 @@ export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
         : isSet(object.account_id)
         ? globalThis.String(object.account_id)
         : "",
+      isAdmin: isSet(object.isAdmin)
+        ? globalThis.Boolean(object.isAdmin)
+        : isSet(object.is_admin)
+        ? globalThis.Boolean(object.is_admin)
+        : false,
     };
   },
 
@@ -1064,6 +1113,9 @@ export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
     if (message.accountId !== "") {
       obj.accountId = message.accountId;
     }
+    if (message.isAdmin !== false) {
+      obj.isAdmin = message.isAdmin;
+    }
     return obj;
   },
 
@@ -1074,6 +1126,7 @@ export const ValidateTokenResponse: MessageFns<ValidateTokenResponse> = {
     const message = createBaseValidateTokenResponse();
     message.valid = object.valid ?? false;
     message.accountId = object.accountId ?? "";
+    message.isAdmin = object.isAdmin ?? false;
     return message;
   },
 };

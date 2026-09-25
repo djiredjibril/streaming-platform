@@ -77,7 +77,11 @@ export async function loginAccount(input: LoginInput, deps: LoginDeps): Promise<
     throw new AccountSuspendedError();
   }
 
-  const accessToken = await signAccessToken({ accountId: credentials.id }, deps.jwtSecret, ACCESS_TOKEN_TTL_SECONDS);
+  const accessToken = await signAccessToken(
+    { accountId: credentials.id, isAdmin: credentials.isAdmin },
+    deps.jwtSecret,
+    ACCESS_TOKEN_TTL_SECONDS,
+  );
   const refreshToken = generateOpaqueToken();
   await deps.refreshTokenRepository.create({
     accountId: credentials.id,
@@ -96,6 +100,7 @@ export async function loginAccount(input: LoginInput, deps: LoginDeps): Promise<
       email: credentials.email,
       accountType: credentials.accountType,
       status: credentials.status,
+      isAdmin: credentials.isAdmin,
     },
     accessToken,
     refreshToken: refreshToken.raw,

@@ -74,11 +74,13 @@ function toAccountRecord(account: {
   email: string;
   accountType: string;
   status: string;
+  isAdmin: boolean;
 }): AccountRecord {
   return {
     id: account.id,
     email: account.email,
     accountType: account.accountType as AccountRecord['accountType'],
     status: account.status as AccountRecord['status'],
+    isAdmin: account.isAdmin,
   };
 }

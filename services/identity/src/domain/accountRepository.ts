@@ -5,6 +5,8 @@ export interface AccountRecord {
   email: string;
   accountType: AccountTypeInput;
   status: 'ACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION';
+  /** Minimal admin role — see prisma/schema.prisma's Account.isAdmin comment for how it's granted. */
+  isAdmin: boolean;
 }
 
 export interface CreateAccountInput {
