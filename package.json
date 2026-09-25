@@ -13,10 +13,13 @@
     "typecheck": "tsc -b --pretty",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prisma:generate": "npm run prisma:generate --workspace=@streaming/identity",
-    "prisma:migrate": "npm run prisma:migrate --workspace=@streaming/identity",
+    "prisma:generate:identity": "npm run prisma:generate --workspace=@streaming/identity",
+    "prisma:migrate:identity": "npm run prisma:migrate --workspace=@streaming/identity",
+    "prisma:generate:catalog": "npm run prisma:generate --workspace=@streaming/catalog",
+    "prisma:migrate:catalog": "npm run prisma:migrate --workspace=@streaming/catalog",
     "start:identity": "npm run build --workspace=@streaming/identity && npm run start --workspace=@streaming/identity",
-    "start:gateway": "npm run build --workspace=@streaming/gateway && npm run start --workspace=@streaming/gateway"
+    "start:gateway": "npm run build --workspace=@streaming/gateway && npm run start --workspace=@streaming/gateway",
+    "start:catalog": "npm run build --workspace=@streaming/catalog && npm run start --workspace=@streaming/catalog"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.15.0",

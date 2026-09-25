@@ -1,0 +1,62 @@
+// Catalog domain model — see /docs/03-catalog.md for the ER diagram and
+// rationale. V1 scope: Title only — Genre/Season/Episode/MediaAsset/Cast are
+// separate features layered on later (docs/WORKFLOW.md feature granularity).
+generator client {
+  provider = "prisma-client-js"
+  // See services/identity/prisma/schema.prisma's identical comment — a
+  // service-local output avoids the two services' `prisma generate`
+  // silently overwriting each other's client in the shared hoisted
+  // node_modules/.prisma/client.
+  output = "../node_modules/@prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  // Own env var name (not DATABASE_URL) so Identity and Catalog can each
+  // load the same root .env without colliding — each service gets its own
+  // logical database on the shared local Postgres instance (see
+  // docker/postgres-init/01-create-catalog-db.sql), consistent with
+  // services/AGENT.md §1.3's no-cross-service-DB-access rule.
+  url = env("CATALOG_DATABASE_URL")
+}
+
+enum TitleType {
+  MOVIE
+  SERIES
+  SHORT
+}
+
+enum ContentRating {
+  G
+  PG
+  PG_13
+  R
+  NC_17
+  UNRATED
+}
+
+enum TitleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Title {
+  id             String        @id @default(uuid())
+  slug           String        @unique
+  type           TitleType
+  originalTitle  String        @map("original_title")
+  synopsis       String
+  releaseYear    Int           @map("release_year")
+  rating         ContentRating
+  // Null for a series — runtime lives on Episode instead once that feature
+  // exists (docs/03-catalog.md's data model).
+  runtimeMinutes Int?          @map("runtime_minutes")
+  posterUrl      String?       @map("poster_url")
+  backdropUrl    String?       @map("backdrop_url")
+  status         TitleStatus   @default(DRAFT)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@map("titles")
+}

@@ -1,0 +1,85 @@
+syntax = "proto3";
+package catalog.v1;
+
+// CatalogService is the source of truth for content metadata (not the video
+// files themselves — see 04-media-pipeline.md). Called internally by the
+// Gateway's GraphQL resolvers, never exposed to the browser directly — same
+// gRPC-is-internal-only rule as IdentityService (docs/00-OVERVIEW.md, "Les
+// trois styles d'API"). See /docs/03-catalog.md for the full domain spec.
+//
+// V1 scope: Title only (movie/series/short shared metadata). Genre, Season,
+// Episode, MediaAsset and Cast are separate features layered on top later —
+// docs/WORKFLOW.md's feature-granularity rule is why this first slice is
+// deliberately smaller than the full 03-catalog.md data model.
+service CatalogService {
+  // Creates a Title in `draft` status. The caller (the Gateway) is trusted
+  // to have already verified the request comes from an admin account via
+  // IdentityService.ValidateToken — CatalogService itself does not
+  // re-validate a token, the same trust boundary already established for
+  // IdentityService.CreateProfile's accountId (only reachable on the
+  // internal network, never exposed to the browser).
+  rpc CreateTitle(CreateTitleRequest) returns (Title);
+
+  // Looks up a Title by its public slug. Returns NOT_FOUND for anything
+  // that isn't `published` — including a real draft/archived title, not
+  // just an unknown slug — so this RPC can never be used to discover
+  // unpublished content by probing slugs (03-catalog.md, "Bonnes
+  // pratiques": never expose a title whose media isn't ready, applied here
+  // one step earlier at the metadata level).
+  rpc GetTitleBySlug(GetTitleBySlugRequest) returns (Title);
+}
+
+enum TitleType {
+  TITLE_TYPE_UNSPECIFIED = 0;
+  MOVIE = 1;
+  SERIES = 2;
+  SHORT = 3;
+}
+
+enum ContentRating {
+  CONTENT_RATING_UNSPECIFIED = 0;
+  G = 1;
+  PG = 2;
+  PG_13 = 3;
+  R = 4;
+  NC_17 = 5;
+  UNRATED = 6;
+}
+
+enum TitleStatus {
+  TITLE_STATUS_UNSPECIFIED = 0;
+  DRAFT = 1;
+  PUBLISHED = 2;
+  ARCHIVED = 3;
+}
+
+message Title {
+  string id = 1;
+  string slug = 2;
+  TitleType type = 3;
+  string original_title = 4;
+  string synopsis = 5;
+  int32 release_year = 6;
+  ContentRating rating = 7;
+  // Not set for a series (see docs/03-catalog.md's data model — runtime lives
+  // on Episode instead once that feature exists).
+  optional int32 runtime_minutes = 8;
+  optional string poster_url = 9;
+  optional string backdrop_url = 10;
+  TitleStatus status = 11;
+}
+
+message CreateTitleRequest {
+  TitleType type = 1;
+  string original_title = 2;
+  string synopsis = 3;
+  int32 release_year = 4;
+  ContentRating rating = 5;
+  optional int32 runtime_minutes = 6;
+  optional string poster_url = 7;
+  optional string backdrop_url = 8;
+}
+
+message GetTitleBySlugRequest {
+  string slug = 1;
+}
