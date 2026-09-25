@@ -52,6 +52,8 @@ const protoTitle = {
   rating: 4, // ContentRating.R
   runtimeMinutes: 136,
   status: 2, // TitleStatus.PUBLISHED
+  mediaAssetStatus: 3, // MediaAssetStatus.READY
+  mediaAssetUrl: 'https://example.com/matrix.mp4',
 };
 
 describe('Query.title', () => {
@@ -71,6 +73,34 @@ describe('Query.title', () => {
 
     expect(body.errors).toBeUndefined();
     expect(body.data.title).toEqual({ originalTitle: 'The Matrix', rating: 'R' });
+  });
+
+  it('derives isPlayable/videoUrl from the media asset status', async () => {
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      getTitleBySlug: () => ({ response: protoTitle }),
+    });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($slug: String!) { title(slug: $slug) { isPlayable videoUrl } }', {
+      slug: 'the-matrix-1999',
+    });
+
+    expect(body.data.title).toEqual({ isPlayable: true, videoUrl: 'https://example.com/matrix.mp4' });
+  });
+
+  it('isPlayable is false and videoUrl is null when no media asset has been attached yet', async () => {
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      getTitleBySlug: () => ({
+        response: { ...protoTitle, mediaAssetStatus: 0 /* MEDIA_ASSET_STATUS_UNSPECIFIED */, mediaAssetUrl: undefined },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($slug: String!) { title(slug: $slug) { isPlayable videoUrl } }', {
+      slug: 'the-matrix-1999',
+    });
+
+    expect(body.data.title).toEqual({ isPlayable: false, videoUrl: null });
   });
 
   it('returns null (not an error) for NOT_FOUND — an unpublished or unknown slug', async () => {
@@ -178,5 +208,137 @@ describe('Mutation.createTitle', () => {
     });
 
     expect(body.errors[0].extensions.code).toBe('ALREADY_EXISTS');
+  });
+});
+
+const ATTACH_MEDIA_ASSET_MUTATION = `
+  mutation($input: AttachMediaAssetInput!) {
+    attachMediaAsset(input: $input) { id isPlayable videoUrl }
+  }
+`;
+
+describe('Mutation.attachMediaAsset', () => {
+  it('rejects a non-admin token, without calling Catalog', async () => {
+    const attachMediaAsset = vi.fn();
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1', isAdmin: false } }),
+    });
+    const catalogClient = { attachMediaAsset } as unknown as CatalogServiceClient;
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      ATTACH_MEDIA_ASSET_MUTATION,
+      { input: { titleId: 'title_1', url: 'https://example.com/v.mp4' } },
+      { authorization: 'Bearer non-admin-token' },
+    );
+
+    expect(body.errors[0].extensions.code).toBe('FORBIDDEN');
+    expect(attachMediaAsset).not.toHaveBeenCalled();
+  });
+
+  it('attaches the asset for an admin token', async () => {
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'admin_1', isAdmin: true } }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      attachMediaAsset: () => ({
+        response: { ...protoTitle, status: 1 /* DRAFT */, mediaAssetUrl: 'https://example.com/v.mp4' },
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      ATTACH_MEDIA_ASSET_MUTATION,
+      { input: { titleId: 'title_1', url: 'https://example.com/v.mp4' } },
+      { authorization: 'Bearer admin-token' },
+    );
+
+    expect(body.errors).toBeUndefined();
+    expect(body.data.attachMediaAsset).toEqual({
+      id: 'title_1',
+      isPlayable: true,
+      videoUrl: 'https://example.com/v.mp4',
+    });
+  });
+
+  it('maps an unknown titleId (NOT_FOUND) to a typed error', async () => {
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'admin_1', isAdmin: true } }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      attachMediaAsset: () => ({ error: serviceError(grpc.status.NOT_FOUND, 'Title not found') }),
+    });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      ATTACH_MEDIA_ASSET_MUTATION,
+      { input: { titleId: 'unknown', url: 'https://example.com/v.mp4' } },
+      { authorization: 'Bearer admin-token' },
+    );
+
+    expect(body.errors[0].extensions.code).toBe('NOT_FOUND');
+  });
+});
+
+const PUBLISH_TITLE_MUTATION = `
+  mutation($id: ID!) {
+    publishTitle(id: $id) { id status: originalTitle }
+  }
+`;
+
+describe('Mutation.publishTitle', () => {
+  it('rejects a request with no bearer token, without calling Catalog', async () => {
+    const publishTitle = vi.fn();
+    const catalogClient = { publishTitle } as unknown as CatalogServiceClient;
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, PUBLISH_TITLE_MUTATION, { id: 'title_1' });
+
+    expect(body.errors[0].extensions.code).toBe('UNAUTHENTICATED');
+    expect(publishTitle).not.toHaveBeenCalled();
+  });
+
+  it('publishes for an admin token', async () => {
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'admin_1', isAdmin: true } }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      publishTitle: () => ({ response: protoTitle }),
+    });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      PUBLISH_TITLE_MUTATION,
+      { id: 'title_1' },
+      { authorization: 'Bearer admin-token' },
+    );
+
+    expect(body.errors).toBeUndefined();
+    expect(body.data.publishTitle.id).toBe('title_1');
+  });
+
+  it('maps FAILED_PRECONDITION (no ready media asset) to a typed error', async () => {
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'admin_1', isAdmin: true } }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      publishTitle: () => ({
+        error: serviceError(grpc.status.FAILED_PRECONDITION, 'This title has no ready media asset'),
+      }),
+    });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      PUBLISH_TITLE_MUTATION,
+      { id: 'title_1' },
+      { authorization: 'Bearer admin-token' },
+    );
+
+    expect(body.errors[0].extensions.code).toBe('FAILED_PRECONDITION');
   });
 });
