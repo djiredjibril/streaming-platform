@@ -189,10 +189,12 @@ type Query {
 
 ## État d'avancement
 
-- [ ] Schéma DB PostgreSQL (Title, Season, Episode, Genre, MediaAsset)
+- [x] Schéma DB PostgreSQL — `Title` uniquement pour l'instant (`CreateTitle`/`GetTitleBySlug` gRPC, `services/catalog/`) ; Season/Episode/Genre/MediaAsset restent à faire, features séparées
 - [ ] Index GIN full-text search
 - [ ] Resolvers GraphQL avec filtrage kids centralisé
 - [ ] Seed de données de test (quelques films/séries fictifs pour développer sans dépendre du pipeline média)
+
+**Note d'implémentation (au-delà de la spec initiale)** : `CreateTitle`/`GetTitleBySlug` sont exposés en **gRPC interne** (`CatalogService`, `/proto/catalog.proto`), pas directement en GraphQL — la Gateway reste le seul point d'entrée client (`docs/00-OVERVIEW.md`), elle hébergera le serveur GraphQL et appellera Catalog en gRPC, exactement comme pour Identity/REST. La section "Contrat API — GraphQL" ci-dessous reste la cible côté client ; elle n'est pas encore implémentée (feature Gateway à venir).
 
 ## Prochaine étape
 

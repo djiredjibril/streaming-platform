@@ -29,17 +29,21 @@ docker-compose.yml <- Postgres, Redis, MinIO en local
    npm run lint
    ```
 
-## Lancer les services (Identity + Gateway)
+## Lancer les services (Identity + Catalog + Gateway)
 
 Une fois l'infra démarrée (`docker compose up -d`) et les dépendances installées :
 
 ```bash
-npm run prisma:migrate    # applique les migrations Identity (une seule fois / après un pull avec nouvelle migration)
+npm run prisma:migrate:identity   # applique les migrations Identity (une seule fois / après un pull avec nouvelle migration)
+npm run prisma:migrate:catalog    # applique les migrations Catalog (idem)
 
 # Terminal 1
 npm run start:identity    # build + démarre le serveur gRPC Identity sur 0.0.0.0:50051
 
 # Terminal 2
+npm run start:catalog     # build + démarre le serveur gRPC Catalog sur 0.0.0.0:50052
+
+# Terminal 3
 npm run start:gateway     # build + démarre le serveur HTTP Gateway sur localhost:3000
 ```
 
