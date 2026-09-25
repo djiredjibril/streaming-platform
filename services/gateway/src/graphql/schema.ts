@@ -1,8 +1,9 @@
 /**
  * GraphQL SDL for the Catalog domain (docs/03-catalog.md, "Contrat API —
- * GraphQL"). V1 scope matches CatalogService's own V1 scope: `Title` only
- * — `genres`/`seasons` from the spec's target schema aren't implemented
- * yet (no Genre/Season/Episode features on the Catalog service either).
+ * GraphQL"). V1 scope matches CatalogService's own V1 scope — `seasons`
+ * from the spec's target schema isn't implemented yet (no Season/Episode
+ * features on the Catalog service). `genres` is implemented, but as
+ * `[String!]!` rather than `[Genre!]!` — see the `Title.genres` docstring.
  */
 export const typeDefs = /* GraphQL */ `
   enum TitleType {
@@ -43,6 +44,13 @@ export const typeDefs = /* GraphQL */ `
     isPlayable: Boolean!
     """ Null until AttachMediaAsset has been called at least once. """
     videoUrl: String
+    """
+    Genre names, as plain strings rather than the spec's target Genre type —
+    nothing yet looks up a title by genre id, so there's no reason to
+    expose one (see CatalogService's Title.genres comment in
+    /proto/catalog.proto).
+    """
+    genres: [String!]!
   }
 
   input CreateTitleInput {
@@ -54,6 +62,7 @@ export const typeDefs = /* GraphQL */ `
     runtimeMinutes: Int
     posterUrl: String
     backdropUrl: String
+    genres: [String!]
   }
 
   input AttachMediaAssetInput {
