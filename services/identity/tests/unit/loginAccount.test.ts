@@ -66,6 +66,17 @@ describe('loginAccount', () => {
     );
   });
 
+  it('embeds isAdmin in the JWT claim (no self-service grant path — see accountRepository.forceAdmin)', async () => {
+    const account = await registerAndActivate();
+    accountRepository.forceAdmin(account.id, true);
+
+    const result = await loginAccount({ email: EMAIL, password: PASSWORD, ipAddress: IP }, deps());
+
+    expect(result.account.isAdmin).toBe(true);
+    const payload = await verifyAccessToken(result.accessToken, JWT_SECRET);
+    expect(payload.isAdmin).toBe(true);
+  });
+
   it('rejects a wrong password and audits LOGIN_FAILED', async () => {
     const account = await registerAndActivate();
 

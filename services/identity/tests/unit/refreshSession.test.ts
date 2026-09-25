@@ -3,6 +3,7 @@ import { InvalidRefreshTokenError, RefreshTokenReuseDetectedError } from '../../
 import { loginAccount } from '../../src/domain/loginAccount.js';
 import { refreshSession } from '../../src/domain/refreshSession.js';
 import { registerAccount } from '../../src/domain/registerAccount.js';
+import { verifyAccessToken } from '../../src/domain/tokens.js';
 import { InMemoryAccountRepository } from './fakes/inMemoryAccountRepository.js';
 import { InMemoryAuditLogRepository } from './fakes/inMemoryAuditLogRepository.js';
 import { InMemoryRateLimiter } from './fakes/inMemoryRateLimiter.js';
@@ -55,6 +56,17 @@ describe('refreshSession', () => {
     expect(result.refreshToken).not.toBe(refreshToken);
     expect(refreshTokenRepository.all).toHaveLength(2);
     expect(refreshTokenRepository.all.filter((t) => t.revokedAt)).toHaveLength(1);
+  });
+
+  it('re-reads isAdmin from the account at refresh time (fresh JWT claim, not carried over from the old token)', async () => {
+    const { refreshToken, account } = await loginActiveAccount();
+    accountRepository.forceAdmin(account.id, true); // promoted between login and refresh
+
+    const result = await refreshSession(refreshToken, deps());
+
+    expect(result.account.isAdmin).toBe(true);
+    const payload = await verifyAccessToken(result.accessToken, JWT_SECRET);
+    expect(payload.isAdmin).toBe(true);
   });
 
   it('rejects an unknown token', async () => {

@@ -43,6 +43,7 @@ export class InMemoryAccountRepository implements AccountRepository {
       email: input.email,
       accountType: input.accountType,
       status: 'PENDING_VERIFICATION',
+      isAdmin: false,
       passwordHash: input.passwordHash,
       emailVerificationTokenHash: input.emailVerificationTokenHash,
       emailVerificationExpiresAt: input.emailVerificationExpiresAt,
@@ -73,6 +74,11 @@ export class InMemoryAccountRepository implements AccountRepository {
     this.mustGet(accountId).status = status;
   }
 
+  /** Test-only helper: simulates the direct-DB-write admin grant (no self-service path exists — see prisma/schema.prisma's Account.isAdmin comment). */
+  forceAdmin(accountId: string, isAdmin: boolean): void {
+    this.mustGet(accountId).isAdmin = isAdmin;
+  }
+
   private mustGet(accountId: string): StoredAccount {
     const account = this.accountsById.get(accountId);
     if (!account) throw new Error(`No account ${accountId}`);
@@ -81,5 +87,11 @@ export class InMemoryAccountRepository implements AccountRepository {
 }
 
 function toRecord(account: StoredAccount): AccountRecord {
-  return { id: account.id, email: account.email, accountType: account.accountType, status: account.status };
+  return {
+    id: account.id,
+    email: account.email,
+    accountType: account.accountType,
+    status: account.status,
+    isAdmin: account.isAdmin,
+  };
 }

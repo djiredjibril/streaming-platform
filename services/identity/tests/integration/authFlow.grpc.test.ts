@@ -89,9 +89,9 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
     });
   }
 
-  function login(request: Parameters<IdentityServiceClient['login']>[0]) {
+  function login(request: Parameters<IdentityServiceClient['login']>[0], metadata?: grpc.Metadata) {
     return new Promise<AuthResponse>((resolve, reject) => {
-      client.login(request, (error, response) => {
+      client.login(request, metadata ?? new grpc.Metadata(), (error, response) => {
         if (error) reject(error);
         else resolve(response!);
       });
@@ -117,7 +117,7 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
   }
 
   function validateToken(token: string) {
-    return new Promise<{ valid: boolean; accountId: string }>((resolve, reject) => {
+    return new Promise<{ valid: boolean; accountId: string; isAdmin: boolean }>((resolve, reject) => {
       client.validateToken({ accessToken: token }, (error, response) => {
         if (error) reject(error);
         else resolve(response!);
@@ -126,10 +126,10 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
   }
 
   function getAccountById(accountId: string) {
-    return new Promise<{ id: string; email: string; status: string }>((resolve, reject) => {
+    return new Promise<{ id: string; email: string; status: string; isAdmin: boolean }>((resolve, reject) => {
       client.getAccount({ accountId }, (error, response) => {
         if (error) reject(error);
-        else resolve(response! as { id: string; email: string; status: string });
+        else resolve(response! as { id: string; email: string; status: string; isAdmin: boolean });
       });
     });
   }
@@ -327,6 +327,36 @@ describe('Identity auth flow (real Postgres + Redis + gRPC)', () => {
 
   it('logout is idempotent for an unknown token', async () => {
     await expect(logout('never-issued-token')).resolves.toMatchObject({ success: true });
+  });
+
+  describe('admin role', () => {
+    // No self-service grant path exists (prisma/schema.prisma's Account.isAdmin
+    // comment) — a direct DB write is the only way to promote, mirrored here
+    // instead of a repository method that would suggest a real endpoint exists.
+    it('is false by default, and only takes effect on the next login/refresh (embedded in the JWT at sign time, not looked up on ValidateToken)', async () => {
+      // Fake IP: login is rate-limited by IP and the lifecycle tests above
+      // already spent part of the shared `client` connection's budget.
+      const metadata = new grpc.Metadata();
+      metadata.set('x-client-ip', '203.0.113.99');
+
+      const testEmail = `admin-role-${Date.now()}@example.com`;
+      const testPassword = 'correct-horse-battery';
+      const registered = await register({ email: testEmail, password: testPassword, accountType: AccountType.PERSO });
+      await verifyEmail(registered.emailVerificationToken!);
+      const accountId = registered.account!.id;
+
+      const firstLogin = await login({ email: testEmail, password: testPassword }, metadata);
+      expect((await validateToken(firstLogin.accessToken)).isAdmin).toBe(false);
+
+      await prisma.account.update({ where: { id: accountId }, data: { isAdmin: true } });
+
+      // The already-issued access token still reports false — it's a JWT claim, not a live lookup.
+      expect((await validateToken(firstLogin.accessToken)).isAdmin).toBe(false);
+
+      const secondLogin = await login({ email: testEmail, password: testPassword }, metadata);
+      expect((await validateToken(secondLogin.accessToken)).isAdmin).toBe(true);
+      expect((await getAccountById(accountId)).isAdmin).toBe(true);
+    });
   });
 
   describe('rate limiting', () => {
