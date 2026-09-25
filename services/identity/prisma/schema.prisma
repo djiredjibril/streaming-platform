@@ -2,6 +2,16 @@
 // rationale (Account/Profile split, why Role is a join table, etc).
 generator client {
   provider = "prisma-client-js"
+  // Without this, `prisma generate` writes to the single hoisted
+  // node_modules/.prisma/client shared by the whole npm workspace — the
+  // last service to run `generate` silently overwrites every other
+  // service's client (discovered when generating Catalog's client broke
+  // Identity's tests: `this.prisma.account` no longer existed). A
+  // service-local output directory is resolved first by Node for imports
+  // from within this service (node_modules lookup walks up from the
+  // importing file), so `import { PrismaClient } from '@prisma/client'` in
+  // this service's own code keeps working unchanged.
+  output = "../node_modules/@prisma/client"
 }
 
 datasource db {

@@ -2,7 +2,6 @@ import { execFileSync } from 'node:child_process';
 import { Writable } from 'node:stream';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
-import { PrismaClient } from '@prisma/client';
 import * as grpc from '@grpc/grpc-js';
 import type { Redis as RedisClient } from 'ioredis';
 import pino from 'pino';
@@ -11,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 // gRPC server instead of mocking it, so this test exercises the full
 // HTTP -> gRPC -> Postgres chain. See services/gateway/README.md.
 import { buildIdentityServer, startIdentityServer } from '@streaming/identity/dist/grpc/server.js';
+import { createPrismaClient, type PrismaClient } from '@streaming/identity/dist/infra/prismaClient.js';
 import { createRedisClient } from '@streaming/identity/dist/infra/redisClient.js';
 import { createIdentityClient } from '../../src/grpc/identityClient.js';
 import { buildGatewayServer } from '../../src/http/server.js';
@@ -46,7 +46,7 @@ describe('Gateway /auth/* (real Identity gRPC server + real Postgres + real Redi
       stdio: 'inherit',
     });
 
-    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    prisma = createPrismaClient(databaseUrl);
     redis = createRedisClient(redisContainer.getConnectionUrl());
     identityServer = buildIdentityServer(prisma, 'test-jwt-secret', redis);
     const identityPort = await startIdentityServer(identityServer, '127.0.0.1:0');
