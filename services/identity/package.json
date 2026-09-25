@@ -5,6 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "tsc -b",
     "start": "dotenv -e ../../.env -- node dist/index.js",
     "test": "vitest run",
