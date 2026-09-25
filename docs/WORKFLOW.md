@@ -103,6 +103,8 @@ Une fois tous les commits de la feature effectués sur la branche, ouvrir la Pul
 
 **Granularité** : une branche/PR par feature au sens de la section "Note sur la granularité d'une 'feature'" ci-dessous — pas une branche par service entière (trop de commits accumulés, revue trop large, main diverge trop longtemps).
 
+**Review en solo** : ce projet n'a qu'un seul contributeur — la PR n'attend donc l'approbation de personne d'autre. Elle sert quand même à quelque chose : relire le diff complet d'une feature d'un coup (plus facile que commit par commit dans le terminal) avant de merger, garder un historique par feature avec sa description, et un point d'accroche pour une future CI. Concrètement : ouvrir la PR, relire son propre diff, merger soi-même une fois satisfait — pas de blocage en attendant une review externe qui ne viendra pas.
+
 ## 4. Feature suivante
 
 Une fois la PR mergée, passage à la feature suivante (nouvelle branche depuis `main` à jour) en respectant l'ordre de phasage défini dans `00-OVERVIEW.md` (Phase 1 → 2 → 3 → 4, domaines dans l'ordre indiqué à l'intérieur de chaque phase).
