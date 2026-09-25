@@ -29,6 +29,8 @@ Deux approches courantes, avec des compromis différents :
 
 RBAC (Role-Based Access Control) : chaque utilisateur a un ou plusieurs rôles, chaque rôle a des permissions. Suffisant pour ce projet — pas besoin d'ABAC (Attribute-Based) sauf si tu veux explorer plus tard des règles genre "un parent peut modérer le profil de son enfant sur un compte famille", ce qui est un bon terrain d'apprentissage si tu veux pousser plus loin.
 
+**Rôle admin minimal** (ajouté au démarrage de Catalog, au-delà de la spec initiale) : `Account.is_admin`, un booléen plat, distinct du `RoleName` de profil (OWNER/MEMBER/KID, qui s'applique à un `Profile` au sein d'un compte, pas au compte lui-même). Sert uniquement à autoriser les écritures d'autres domaines (ex: `createTitle` côté Catalog) — pas de gestion fine de permissions type RBAC complet pour l'instant (YAGNI, à revoir si plusieurs niveaux d'admin deviennent nécessaires). Aucun chemin self-service ne le positionne à `true` : seule une écriture DB directe le fait, documentée dans `services/identity/README.md`. Embarqué dans le claim JWT à `Login`/`RefreshToken` plutôt que relu à chaque `ValidateToken` (l'appel le plus fréquent du système) — une promotion met donc jusqu'à `ACCESS_TOKEN_TTL_SECONDS` à prendre effet, pas immédiatement.
+
 ### 4. Comptes multi-types avec sous-profils (le vrai défi de ce domaine)
 
 Le point intéressant de ta spec : un compte "famille" n'est pas juste un `account_type` sur `users` — c'est une relation **compte payeur → plusieurs profils**. Netflix et consorts modélisent ça ainsi :
@@ -114,6 +116,7 @@ erDiagram
         string password_hash
         enum account_type
         enum status
+        bool is_admin
     }
     STUDENT_VERIFICATION {
         uuid id PK
@@ -223,6 +226,7 @@ message ValidateTokenRequest {
 message ValidateTokenResponse {
   bool valid = 1;
   string account_id = 2;
+  bool is_admin = 3; // lu depuis le claim JWT, pas une lecture DB fraîche — cf. Account.is_admin ci-dessous
 }
 
 message Account {
@@ -230,6 +234,7 @@ message Account {
   string email = 2;
   AccountType account_type = 3;
   string status = 4;
+  bool is_admin = 5; // rôle admin minimal, cf. section 3 "Modèle d'autorisation : RBAC" plus haut
 }
 
 message VerifyEmailRequest { string token = 1; }
