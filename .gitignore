@@ -1,5 +1,9 @@
 node_modules/
 dist/
+# Prisma clients are generated outside node_modules, as a sibling of each
+# service's src/ (see each service's schema.prisma `output` comment) —
+# still generated code, never committed.
+generated/prisma-client/
 build/
 *.tsbuildinfo
 .env

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { Writable } from 'node:stream';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/prisma-client/index.js';
 import type { Redis as RedisClient } from 'ioredis';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

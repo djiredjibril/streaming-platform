@@ -1,5 +1,5 @@
 import * as grpc from '@grpc/grpc-js';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/prisma-client/index.js';
 import { PrismaTitleRepository } from '../infra/prismaTitleRepository.js';
 import { createCatalogServiceImpl } from './catalogServiceImpl.js';
 import { CatalogServiceService } from './generated/catalog.js';

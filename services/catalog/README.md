@@ -44,7 +44,7 @@ Même architecture hexagonale que Identity (`services/AGENT.md`, section 3) : `/
 | `CATALOG_DATABASE_URL` | Connexion PostgreSQL (Prisma) — base logique séparée de celle d'Identity, cf. `services/AGENT.md` §1.3 | — requis |
 | `CATALOG_GRPC_ADDRESS` | Adresse d'écoute du serveur gRPC | `0.0.0.0:50052` |
 
-**Note Prisma monorepo** : `prisma/schema.prisma` fixe `generator client { output = "../node_modules/@prisma/client" }` — sans ça, `prisma generate` écrirait dans le `node_modules/.prisma/client` racine partagé par tout le workspace npm, et écraserait silencieusement le client généré d'un autre service (ça a cassé Identity une fois pendant le développement de cette feature, cf. le commit `fix(monorepo)` juste avant celui-ci).
+**Note Prisma monorepo** : `prisma/schema.prisma` fixe `generator client { output = "../src/generated/prisma-client" }` — généré hors de `node_modules`, jamais commité (`.gitignore`). Sans un `output` dédié, `prisma generate` écrirait dans le `node_modules/.prisma/client` racine partagé par tout le workspace npm et écraserait silencieusement le client généré d'un autre service (ça a cassé Identity une fois pendant le développement de la feature Title). Voir `docs/ARCHITECTURE.md` §6 pour le détail (et pourquoi un `output` personnalisé *dans* `node_modules` a aussi été essayé puis abandonné).
 
 ## Lancer en local
 

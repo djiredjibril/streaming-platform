@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/prisma-client/index.js';
 import type { CreateTitleRecordInput, TitleRecord, TitleRepository } from '../domain/titleRepository.js';
 
 /** Prisma-backed TitleRepository — the only file in this service that issues SQL (via Prisma) for titles. */

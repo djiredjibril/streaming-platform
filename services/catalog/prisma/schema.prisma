@@ -4,10 +4,9 @@
 generator client {
   provider = "prisma-client-js"
   // See services/identity/prisma/schema.prisma's identical comment — a
-  // service-local output avoids the two services' `prisma generate`
-  // silently overwriting each other's client in the shared hoisted
-  // node_modules/.prisma/client.
-  output = "../node_modules/@prisma/client"
+  // sibling of `src/`, not nested inside it, so the relative import from
+  // `src/infra/prismaClient.ts` still resolves once compiled to `dist/`.
+  output = "../generated/prisma-client"
 }
 
 datasource db {
@@ -39,6 +38,13 @@ enum TitleStatus {
   DRAFT
   PUBLISHED
   ARCHIVED
+}
+
+enum MediaAssetStatus {
+  PENDING_UPLOAD
+  PROCESSING
+  READY
+  FAILED
 }
 
 model Title {

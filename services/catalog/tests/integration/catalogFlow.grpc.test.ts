@@ -1,7 +1,7 @@
 import * as grpc from '@grpc/grpc-js';
 import { execFileSync } from 'node:child_process';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/prisma-client/index.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildCatalogServer, startCatalogServer } from '../../src/grpc/server.js';
 import {
