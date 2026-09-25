@@ -7,6 +7,7 @@ import { buildCatalogServer, startCatalogServer } from '../../src/grpc/server.js
 import {
   CatalogServiceClient,
   ContentRating,
+  MediaAssetStatus,
   TitleStatus,
   TitleType,
   type Title,
@@ -15,9 +16,11 @@ import {
 /**
  * Exercises the full CreateTitle -> GetTitleBySlug flow against a real
  * Postgres + gRPC server (services/AGENT.md §4: no DB mocking for
- * integration tests). Publishing isn't a feature yet (no mutation for it —
- * see domain/getTitleBySlug.ts) so this test flips `status` directly via
- * Prisma to simulate it, the same pattern used for the admin-role
+ * integration tests). The "getTitleBySlug returns the title once
+ * published" test flips `status` directly via Prisma (pre-dates
+ * attachMediaAsset/publishTitle existing, kept as extra DB-level
+ * coverage) — the "attachMediaAsset + publishTitle" describe block below
+ * exercises the real RPCs instead, same pattern as the admin-role
  * integration test in services/identity.
  */
 describe('CatalogService (real Postgres + gRPC)', () => {
@@ -67,6 +70,24 @@ describe('CatalogService (real Postgres + gRPC)', () => {
     });
   }
 
+  function attachMediaAsset(request: Parameters<CatalogServiceClient['attachMediaAsset']>[0]) {
+    return new Promise<Title>((resolve, reject) => {
+      client.attachMediaAsset(request, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
+  function publishTitle(id: string) {
+    return new Promise<Title>((resolve, reject) => {
+      client.publishTitle({ id }, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
   const movieInput = {
     type: TitleType.MOVIE,
     originalTitle: 'The Matrix',
@@ -108,5 +129,35 @@ describe('CatalogService (real Postgres + gRPC)', () => {
     expect(title.originalTitle).toBe('The Matrix');
     expect(title.status).toBe(TitleStatus.PUBLISHED);
     expect(title.runtimeMinutes).toBe(136);
+  });
+
+  describe('attachMediaAsset + publishTitle (real flow, no direct Prisma writes)', () => {
+    it('publishTitle rejects a title with no media asset', async () => {
+      const title = await createTitle({ ...movieInput, originalTitle: 'Short Film', releaseYear: 2020 });
+
+      await expect(publishTitle(title.id)).rejects.toMatchObject({ code: grpc.status.FAILED_PRECONDITION });
+    });
+
+    it('attachMediaAsset then publishTitle makes the title visible via getTitleBySlug', async () => {
+      const title = await createTitle({ ...movieInput, originalTitle: 'Another Film', releaseYear: 2021 });
+
+      const withAsset = await attachMediaAsset({ titleId: title.id, url: 'https://example.com/another-film.mp4' });
+      expect(withAsset.mediaAssetStatus).toBe(MediaAssetStatus.READY);
+      expect(withAsset.mediaAssetUrl).toBe('https://example.com/another-film.mp4');
+      expect(withAsset.status).toBe(TitleStatus.DRAFT); // attaching media doesn't publish by itself
+
+      const published = await publishTitle(title.id);
+      expect(published.status).toBe(TitleStatus.PUBLISHED);
+
+      const bySlug = await getTitleBySlug('another-film-2021');
+      expect(bySlug.originalTitle).toBe('Another Film');
+      expect(bySlug.mediaAssetUrl).toBe('https://example.com/another-film.mp4');
+    });
+
+    it('attachMediaAsset rejects an unknown titleId with NOT_FOUND', async () => {
+      await expect(
+        attachMediaAsset({ titleId: '00000000-0000-0000-0000-000000000000', url: 'https://example.com/x.mp4' }),
+      ).rejects.toMatchObject({ code: grpc.status.NOT_FOUND });
+    });
   });
 });
