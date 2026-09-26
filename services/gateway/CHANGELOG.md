@@ -12,3 +12,4 @@
 - feat: `Title.genres`/`CreateTitleInput.genres` exposés en GraphQL (`[String!]`)
 - feat: `Query.browseTitles` — public, pagination par curseur, filtres genre/type ; `TitleConnection` volontairement pas une Relay Connection stricte (pas de curseur par arête)
 - feat: `Query.searchTitles` — public, recherche full-text classée par pertinence (`ts_rank` via `CatalogService.SearchTitles`), pas de pagination
+- feat: filtrage kids — `profileId` optionnel sur `browseTitles`/`searchTitles`, vérifié contre `IdentityService.ListProfiles` (FORBIDDEN si le profil n'appartient pas au compte du token) ; transmet `kidsSafeOnly` à `CatalogService` quand le profil résolu est un profil kids
