@@ -200,6 +200,48 @@ describe('Query.browseTitles', () => {
   });
 });
 
+describe('Query.searchTitles', () => {
+  it('requires no auth and maps matched titles', async () => {
+    const searchTitles = vi.fn(() => ({ response: { titles: [protoTitle] } }));
+    const catalogClient = fakeClient<CatalogServiceClient>({ searchTitles });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($query: String!) { searchTitles(query: $query) { slug } }', {
+      query: 'matrix',
+    });
+
+    expect(body.errors).toBeUndefined();
+    expect(body.data.searchTitles).toEqual([{ slug: 'the-matrix-1999' }]);
+  });
+
+  it('passes query/limit through to Catalog', async () => {
+    const searchTitles = vi.fn(() => ({ response: { titles: [] } }));
+    const catalogClient = fakeClient<CatalogServiceClient>({ searchTitles });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    await graphqlRequest(
+      app,
+      'query($query: String!, $limit: Int) { searchTitles(query: $query, limit: $limit) { id } }',
+      { query: 'matrix', limit: 5 },
+    );
+
+    expect(searchTitles).toHaveBeenCalledWith(expect.objectContaining({ query: 'matrix', limit: 5 }));
+  });
+
+  it('maps INVALID_ARGUMENT (empty query) to a typed error', async () => {
+    const catalogClient = fakeClient<CatalogServiceClient>({
+      searchTitles: () => ({ error: serviceError(grpc.status.INVALID_ARGUMENT, 'query is required') }),
+    });
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($query: String!) { searchTitles(query: $query) { id } }', {
+      query: '',
+    });
+
+    expect(body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+  });
+});
+
 const CREATE_TITLE_MUTATION = `
   mutation($input: CreateTitleInput!) {
     createTitle(input: $input) {
