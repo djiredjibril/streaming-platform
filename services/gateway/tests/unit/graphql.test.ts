@@ -198,6 +198,81 @@ describe('Query.browseTitles', () => {
 
     expect(body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
   });
+
+  it('profileId requires a bearer token, without calling Catalog', async () => {
+    const browseTitles = vi.fn();
+    const catalogClient = { browseTitles } as unknown as CatalogServiceClient;
+    const app = buildGatewayServer({ identityClient: {} as IdentityServiceClient, catalogClient, logger });
+
+    const body = await graphqlRequest(app, 'query($profileId: ID) { browseTitles(profileId: $profileId) { nextCursor } }', {
+      profileId: 'profile_1',
+    });
+
+    expect(body.errors[0].extensions.code).toBe('UNAUTHENTICATED');
+    expect(browseTitles).not.toHaveBeenCalled();
+  });
+
+  it('rejects a profileId not owned by the authenticated account with FORBIDDEN, without calling Catalog', async () => {
+    const browseTitles = vi.fn();
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1', isAdmin: false } }),
+      listProfiles: () => ({ response: { profiles: [{ id: 'someone_elses_profile', accountId: 'acc_2', displayName: 'Kid', isKidsProfile: true }] } }),
+    });
+    const catalogClient = { browseTitles } as unknown as CatalogServiceClient;
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      'query($profileId: ID) { browseTitles(profileId: $profileId) { nextCursor } }',
+      { profileId: 'profile_1' },
+      { authorization: 'Bearer token' },
+    );
+
+    expect(body.errors[0].extensions.code).toBe('FORBIDDEN');
+    expect(browseTitles).not.toHaveBeenCalled();
+  });
+
+  it('forwards kidsSafeOnly: true to Catalog for an owned kids profile', async () => {
+    const browseTitles = vi.fn(() => ({ response: { titles: [], nextCursor: undefined } }));
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1', isAdmin: false } }),
+      listProfiles: () => ({
+        response: { profiles: [{ id: 'profile_1', accountId: 'acc_1', displayName: 'Kid', isKidsProfile: true }] },
+      }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({ browseTitles });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    await graphqlRequest(
+      app,
+      'query($profileId: ID) { browseTitles(profileId: $profileId) { nextCursor } }',
+      { profileId: 'profile_1' },
+      { authorization: 'Bearer token' },
+    );
+
+    expect(browseTitles).toHaveBeenCalledWith(expect.objectContaining({ kidsSafeOnly: true }));
+  });
+
+  it('forwards kidsSafeOnly: false to Catalog for an owned non-kids profile', async () => {
+    const browseTitles = vi.fn(() => ({ response: { titles: [], nextCursor: undefined } }));
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1', isAdmin: false } }),
+      listProfiles: () => ({
+        response: { profiles: [{ id: 'profile_1', accountId: 'acc_1', displayName: 'Adult', isKidsProfile: false }] },
+      }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({ browseTitles });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    await graphqlRequest(
+      app,
+      'query($profileId: ID) { browseTitles(profileId: $profileId) { nextCursor } }',
+      { profileId: 'profile_1' },
+      { authorization: 'Bearer token' },
+    );
+
+    expect(browseTitles).toHaveBeenCalledWith(expect.objectContaining({ kidsSafeOnly: false }));
+  });
 });
 
 describe('Query.searchTitles', () => {
@@ -239,6 +314,47 @@ describe('Query.searchTitles', () => {
     });
 
     expect(body.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+  });
+
+  it('rejects a profileId not owned by the authenticated account with FORBIDDEN, without calling Catalog', async () => {
+    const searchTitles = vi.fn();
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1', isAdmin: false } }),
+      listProfiles: () => ({ response: { profiles: [] } }),
+    });
+    const catalogClient = { searchTitles } as unknown as CatalogServiceClient;
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    const body = await graphqlRequest(
+      app,
+      'query($query: String!, $profileId: ID) { searchTitles(query: $query, profileId: $profileId) { id } }',
+      { query: 'matrix', profileId: 'profile_1' },
+      { authorization: 'Bearer token' },
+    );
+
+    expect(body.errors[0].extensions.code).toBe('FORBIDDEN');
+    expect(searchTitles).not.toHaveBeenCalled();
+  });
+
+  it('forwards kidsSafeOnly: true to Catalog for an owned kids profile', async () => {
+    const searchTitles = vi.fn(() => ({ response: { titles: [] } }));
+    const identityClient = fakeClient<IdentityServiceClient>({
+      validateToken: () => ({ response: { valid: true, accountId: 'acc_1', isAdmin: false } }),
+      listProfiles: () => ({
+        response: { profiles: [{ id: 'profile_1', accountId: 'acc_1', displayName: 'Kid', isKidsProfile: true }] },
+      }),
+    });
+    const catalogClient = fakeClient<CatalogServiceClient>({ searchTitles });
+    const app = buildGatewayServer({ identityClient, catalogClient, logger });
+
+    await graphqlRequest(
+      app,
+      'query($query: String!, $profileId: ID) { searchTitles(query: $query, profileId: $profileId) { id } }',
+      { query: 'matrix', profileId: 'profile_1' },
+      { authorization: 'Bearer token' },
+    );
+
+    expect(searchTitles).toHaveBeenCalledWith(expect.objectContaining({ kidsSafeOnly: true }));
   });
 });
 

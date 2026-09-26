@@ -366,4 +366,99 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     expect(result.errors).toBeUndefined();
     expect(result.data.searchTitles).toEqual([{ id: titleId }]);
   });
+
+  it('kids-safe filtering: a kids profile only sees G/PG titles via browseTitles/searchTitles, real end-to-end', async () => {
+    const adminToken = await registerAndGetAdminToken();
+
+    async function createAndPublish(originalTitle: string, releaseYear: number, rating: string) {
+      const createBody = await graphql(
+        CREATE_TITLE_MUTATION,
+        { input: { type: 'MOVIE', originalTitle, synopsis: 'dragons and knights', releaseYear, rating, runtimeMinutes: 90 } },
+        { authorization: `Bearer ${adminToken}` },
+      );
+      const titleId = createBody.data.createTitle.id;
+      await graphql(
+        ATTACH_MEDIA_ASSET_MUTATION,
+        { input: { titleId, url: 'https://example.com/v.mp4' } },
+        { authorization: `Bearer ${adminToken}` },
+      );
+      await graphql(PUBLISH_TITLE_MUTATION, { id: titleId }, { authorization: `Bearer ${adminToken}` });
+      return titleId;
+    }
+
+    const kidsSafeTitle = await createAndPublish('Kids Safe Dragons', 2025, 'G');
+    const matureTitle = await createAndPublish('Mature Dragons', 2025, 'R');
+
+    // A separate, non-admin account owns the profile used to filter.
+    const remoteAddress = '203.0.114.200';
+    const email = `profile-owner-${Date.now()}@example.com`;
+    const password = 'correct-horse-battery';
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      remoteAddress,
+      payload: { email, password, accountType: 'FAMILLE' },
+    });
+    await app.inject({ method: 'POST', url: '/auth/verify-email', payload: { token: registerRes.json().emailVerificationToken } });
+    const loginRes = await app.inject({ method: 'POST', url: '/auth/login', remoteAddress, payload: { email, password } });
+    const accountToken = loginRes.json().accessToken;
+
+    const kidsProfileRes = await app.inject({
+      method: 'POST',
+      url: '/auth/profiles',
+      headers: { authorization: `Bearer ${accountToken}` },
+      payload: { displayName: 'Kid', isKidsProfile: true },
+    });
+    const kidsProfileId = kidsProfileRes.json().id;
+
+    const otherAccountToken = (
+      await (async () => {
+        const otherRemoteAddress = '203.0.114.201';
+        const otherEmail = `other-account-${Date.now()}@example.com`;
+        const otherRegisterRes = await app.inject({
+          method: 'POST',
+          url: '/auth/register',
+          remoteAddress: otherRemoteAddress,
+          payload: { email: otherEmail, password, accountType: 'PERSO' },
+        });
+        await app.inject({
+          method: 'POST',
+          url: '/auth/verify-email',
+          payload: { token: otherRegisterRes.json().emailVerificationToken },
+        });
+        return app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          remoteAddress: otherRemoteAddress,
+          payload: { email: otherEmail, password },
+        });
+      })()
+    ).json().accessToken;
+
+    const browseResult = await graphql(
+      'query($profileId: ID) { browseTitles(limit: 50, profileId: $profileId) { titles { id } } }',
+      { profileId: kidsProfileId },
+      { authorization: `Bearer ${accountToken}` },
+    );
+    expect(browseResult.errors).toBeUndefined();
+    expect(browseResult.data.browseTitles.titles.map((t: { id: string }) => t.id)).toContain(kidsSafeTitle);
+    expect(browseResult.data.browseTitles.titles.map((t: { id: string }) => t.id)).not.toContain(matureTitle);
+
+    const searchResult = await graphql(
+      'query($query: String!, $profileId: ID) { searchTitles(query: $query, profileId: $profileId) { id } }',
+      { query: 'dragons', profileId: kidsProfileId },
+      { authorization: `Bearer ${accountToken}` },
+    );
+    expect(searchResult.errors).toBeUndefined();
+    expect(searchResult.data.searchTitles.map((t: { id: string }) => t.id)).toContain(kidsSafeTitle);
+    expect(searchResult.data.searchTitles.map((t: { id: string }) => t.id)).not.toContain(matureTitle);
+
+    // Someone else's account cannot use this profile id to filter — FORBIDDEN, IDOR-safe.
+    const forbiddenResult = await graphql(
+      'query($profileId: ID) { browseTitles(limit: 50, profileId: $profileId) { titles { id } } }',
+      { profileId: kidsProfileId },
+      { authorization: `Bearer ${otherAccountToken}` },
+    );
+    expect(forbiddenResult.errors[0].extensions.code).toBe('FORBIDDEN');
+  });
 });
