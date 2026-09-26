@@ -264,6 +264,26 @@ describe('CatalogService (real Postgres + gRPC)', () => {
         code: grpc.status.INVALID_ARGUMENT,
       });
     });
+
+    it('kidsSafeOnly excludes ratings outside G/PG', async () => {
+      const kidsSafe = await createAndPublish({
+        originalTitle: 'Browse Kids Safe',
+        releaseYear: 2016,
+        rating: ContentRating.G,
+        genres: [],
+      });
+      const mature = await createAndPublish({
+        originalTitle: 'Browse Mature',
+        releaseYear: 2017,
+        rating: ContentRating.R,
+        genres: [],
+      });
+
+      const result = await browseTitles({ limit: 50, kidsSafeOnly: true });
+
+      expect(result.titles.map((t) => t.id)).toContain(kidsSafe.id);
+      expect(result.titles.map((t) => t.id)).not.toContain(mature.id);
+    });
   });
 
   describe('searchTitles (real Postgres tsvector + GIN index)', () => {
@@ -305,6 +325,26 @@ describe('CatalogService (real Postgres + gRPC)', () => {
 
     it('rejects an empty query with INVALID_ARGUMENT', async () => {
       await expect(searchTitles({ query: '' })).rejects.toMatchObject({ code: grpc.status.INVALID_ARGUMENT });
+    });
+
+    it('kidsSafeOnly excludes a matching title rated outside G/PG', async () => {
+      const kidsSafe = await createAndPublish({
+        originalTitle: 'Search Dragons For Kids',
+        releaseYear: 2021,
+        rating: ContentRating.G,
+        genres: [],
+      });
+      const mature = await createAndPublish({
+        originalTitle: 'Search Dragons Mature Cut',
+        releaseYear: 2022,
+        rating: ContentRating.R,
+        genres: [],
+      });
+
+      const result = await searchTitles({ query: 'dragons', kidsSafeOnly: true });
+
+      expect(result.titles.map((t) => t.id)).toContain(kidsSafe.id);
+      expect(result.titles.map((t) => t.id)).not.toContain(mature.id);
     });
   });
 });

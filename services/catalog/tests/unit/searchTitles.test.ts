@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createTitle } from '../../src/domain/createTitle.js';
 import { InvalidSearchTitlesInputError } from '../../src/domain/errors.js';
+import type { ContentRatingInput } from '../../src/domain/schemas.js';
 import { searchTitles } from '../../src/domain/searchTitles.js';
 import { InMemoryTitleRepository } from './fakes/inMemoryTitleRepository.js';
 
@@ -11,9 +12,9 @@ describe('searchTitles', () => {
     titleRepository = new InMemoryTitleRepository();
   });
 
-  async function createPublishedTitle(originalTitle: string, synopsis: string) {
+  async function createPublishedTitle(originalTitle: string, synopsis: string, rating: ContentRatingInput = 'PG') {
     const title = await createTitle(
-      { type: 'MOVIE', originalTitle, synopsis, releaseYear: 2020, rating: 'PG', runtimeMinutes: 90 },
+      { type: 'MOVIE', originalTitle, synopsis, releaseYear: 2020, rating, runtimeMinutes: 90 },
       { titleRepository },
     );
     titleRepository.forceMediaAsset(title.id, 'READY');
@@ -76,5 +77,20 @@ describe('searchTitles', () => {
 
     const results = await searchTitles({ query: 'matrix' }, titleRepository);
     expect(results).toHaveLength(20);
+  });
+
+  it('kidsSafeOnly excludes a matching title rated outside G/PG', async () => {
+    await createPublishedTitle('Matrix for Kids', 'Y', 'G');
+    await createPublishedTitle('Matrix Reloaded (R)', 'Y', 'R');
+
+    const results = await searchTitles({ query: 'matrix', kidsSafeOnly: true }, titleRepository);
+    expect(results.map((t) => t.originalTitle)).toEqual(['Matrix for Kids']);
+  });
+
+  it('kidsSafeOnly defaults to false — a mature match is still returned when omitted', async () => {
+    await createPublishedTitle('Matrix Reloaded (R)', 'Y', 'R');
+
+    const results = await searchTitles({ query: 'matrix' }, titleRepository);
+    expect(results).toHaveLength(1);
   });
 });
