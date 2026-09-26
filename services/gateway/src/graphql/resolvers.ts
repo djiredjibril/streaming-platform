@@ -13,7 +13,13 @@ import type {
   Title as ProtoTitle,
 } from '../grpc/generated/catalog.js';
 import { ContentRating, MediaAssetStatus, TitleType } from '../grpc/generated/catalog.js';
-import type { IdentityServiceClient, ValidateTokenRequest, ValidateTokenResponse } from '../grpc/generated/identity.js';
+import type {
+  IdentityServiceClient,
+  ListProfilesRequest,
+  ListProfilesResponse,
+  ValidateTokenRequest,
+  ValidateTokenResponse,
+} from '../grpc/generated/identity.js';
 import type { Logger } from '../infra/logger.js';
 
 export interface GraphQLContext {
@@ -96,6 +102,16 @@ function titleToGraphQL(title: ProtoTitle): GraphQLTitle {
   };
 }
 
+function extractAccessToken(context: GraphQLContext): string {
+  const accessToken = context.authorization?.startsWith('Bearer ')
+    ? context.authorization.slice('Bearer '.length)
+    : undefined;
+  if (!accessToken) {
+    throw new GraphQLError('Missing bearer token', { extensions: { code: 'UNAUTHENTICATED' } });
+  }
+  return accessToken;
+}
+
 /**
  * Extracts the `Authorization: Bearer <token>` header, validates it via
  * IdentityService.ValidateToken, and throws a typed GraphQLError unless
@@ -106,12 +122,7 @@ function titleToGraphQL(title: ProtoTitle): GraphQLTitle {
  * the Gateway to have done this).
  */
 async function requireAdmin(context: GraphQLContext): Promise<void> {
-  const accessToken = context.authorization?.startsWith('Bearer ')
-    ? context.authorization.slice('Bearer '.length)
-    : undefined;
-  if (!accessToken) {
-    throw new GraphQLError('Missing bearer token', { extensions: { code: 'UNAUTHENTICATED' } });
-  }
+  const accessToken = extractAccessToken(context);
 
   const validation = await callUnary<ValidateTokenRequest, ValidateTokenResponse>(
     context.identityClient.validateToken.bind(context.identityClient),
@@ -124,6 +135,42 @@ async function requireAdmin(context: GraphQLContext): Promise<void> {
   if (!validation.isAdmin) {
     throw new GraphQLError('Admin account required', { extensions: { code: 'FORBIDDEN' } });
   }
+}
+
+/**
+ * Resolves whether `profileId` is a kids profile, for browseTitles/
+ * searchTitles' optional profile-scoped filtering (docs/03-catalog.md,
+ * "Filtrage kids"). Requires a valid bearer token and throws FORBIDDEN if
+ * the profile doesn't belong to the authenticated account — same IDOR-safe
+ * pattern as requireAccountId()'s use in the REST /auth/profiles routes,
+ * except here ownership is checked via ListProfiles (there's no
+ * GetProfile(id) RPC — see docs/03-catalog.md's kids-filtering note for why
+ * that was preferred over adding one). "Not found" and "not yours" return
+ * the same error so a caller can't use this to probe which profile ids
+ * exist.
+ */
+async function isKidsProfile(context: GraphQLContext, profileId: string): Promise<boolean> {
+  const accessToken = extractAccessToken(context);
+
+  const validation = await callUnary<ValidateTokenRequest, ValidateTokenResponse>(
+    context.identityClient.validateToken.bind(context.identityClient),
+    { accessToken },
+    correlationMetadata(context),
+  );
+  if (!validation.valid) {
+    throw new GraphQLError('Invalid or expired access token', { extensions: { code: 'UNAUTHENTICATED' } });
+  }
+
+  const { profiles } = await callUnary<ListProfilesRequest, ListProfilesResponse>(
+    context.identityClient.listProfiles.bind(context.identityClient),
+    { accountId: validation.accountId },
+    correlationMetadata(context),
+  );
+  const profile = profiles.find((p) => p.id === profileId);
+  if (!profile) {
+    throw new GraphQLError('Profile not found', { extensions: { code: 'FORBIDDEN' } });
+  }
+  return profile.isKidsProfile;
 }
 
 /** Maps a gRPC error to a typed GraphQLError. 500-equivalent errors are logged with full detail server-side and return a generic message (services/AGENT.md §8: never expose internals to the client) — same shape as the REST Gateway's mapGrpcError in http/routes/auth.ts. */
@@ -171,9 +218,11 @@ export const resolvers = {
 
     async browseTitles(
       _parent: unknown,
-      args: { genre?: string; type?: string; cursor?: string; limit?: number },
+      args: { genre?: string; type?: string; cursor?: string; limit?: number; profileId?: string },
       context: GraphQLContext,
     ): Promise<{ titles: GraphQLTitle[]; nextCursor: string | null }> {
+      const kidsSafeOnly = args.profileId !== undefined ? await isKidsProfile(context, args.profileId) : false;
+
       try {
         const response = await callUnary<BrowseTitlesRequest, BrowseTitlesResponse>(
           context.catalogClient.browseTitles.bind(context.catalogClient),
@@ -182,6 +231,7 @@ export const resolvers = {
             type: args.type !== undefined ? titleTypeFromGraphQL[args.type] : undefined,
             cursor: args.cursor,
             limit: args.limit,
+            kidsSafeOnly,
           },
           correlationMetadata(context),
         );
@@ -193,13 +243,15 @@ export const resolvers = {
 
     async searchTitles(
       _parent: unknown,
-      args: { query: string; limit?: number },
+      args: { query: string; limit?: number; profileId?: string },
       context: GraphQLContext,
     ): Promise<GraphQLTitle[]> {
+      const kidsSafeOnly = args.profileId !== undefined ? await isKidsProfile(context, args.profileId) : false;
+
       try {
         const response = await callUnary<SearchTitlesRequest, SearchTitlesResponse>(
           context.catalogClient.searchTitles.bind(context.catalogClient),
-          { query: args.query, limit: args.limit },
+          { query: args.query, limit: args.limit, kidsSafeOnly },
           correlationMetadata(context),
         );
         return response.titles.map(titleToGraphQL);

@@ -94,15 +94,23 @@ export const typeDefs = /* GraphQL */ `
     Mutation on this schema. cursor/limit name the underlying gRPC fields
     directly rather than Relay's after/first — see TitleConnection's
     docstring for why this isn't a strict Connection.
+
+    profileId is optional and, when passed, must belong to the account
+    behind the request's bearer token (checked via IdentityService.
+    ListProfiles — FORBIDDEN otherwise). If that profile is a kids profile,
+    only G/PG-rated titles are returned (docs/03-catalog.md, "Filtrage
+    kids"). Omitting profileId returns the full unfiltered catalog, same
+    as before this argument existed.
     """
-    browseTitles(genre: String, type: TitleType, cursor: String, limit: Int): TitleConnection!
+    browseTitles(genre: String, type: TitleType, cursor: String, limit: Int, profileId: ID): TitleConnection!
     """
     Full-text search over originalTitle/synopsis, ranked by relevance —
     see CatalogService.SearchTitles' comment in /proto/catalog.proto.
     Public, no pagination (matches the spec's target signature, plus an
-    optional limit).
+    optional limit). profileId has the same meaning and ownership check as
+    browseTitles' profileId.
     """
-    searchTitles(query: String!, limit: Int): [Title!]!
+    searchTitles(query: String!, limit: Int, profileId: ID): [Title!]!
   }
 
   type Mutation {
