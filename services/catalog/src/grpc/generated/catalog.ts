@@ -303,7 +303,17 @@ export interface BrowseTitlesRequest {
     | string
     | undefined;
   /** Defaults to 20, capped at 50 — see domain/browseTitles.ts. */
-  limit?: number | undefined;
+  limit?:
+    | number
+    | undefined;
+  /**
+   * The Gateway is trusted to have already resolved this from the active
+   * profile (docs/03-catalog.md, "Filtrage kids") — CatalogService itself
+   * does not know about profiles, same trust boundary as CreateTitle's
+   * admin check. When true, only KIDS_SAFE_RATINGS titles (G/PG — see
+   * domain/schemas.ts) are returned.
+   */
+  kidsSafeOnly: boolean;
 }
 
 export interface BrowseTitlesResponse {
@@ -315,7 +325,11 @@ export interface BrowseTitlesResponse {
 export interface SearchTitlesRequest {
   query: string;
   /** Defaults to 20, capped at 50 — see domain/searchTitles.ts. */
-  limit?: number | undefined;
+  limit?:
+    | number
+    | undefined;
+  /** Same meaning and trust boundary as BrowseTitlesRequest.kids_safe_only. */
+  kidsSafeOnly: boolean;
 }
 
 export interface SearchTitlesResponse {
@@ -1098,7 +1112,7 @@ export const PublishTitleRequest: MessageFns<PublishTitleRequest> = {
 };
 
 function createBaseBrowseTitlesRequest(): BrowseTitlesRequest {
-  return { genre: undefined, type: undefined, cursor: undefined, limit: undefined };
+  return { genre: undefined, type: undefined, cursor: undefined, limit: undefined, kidsSafeOnly: false };
 }
 
 export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
@@ -1114,6 +1128,9 @@ export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
     }
     if (message.limit !== undefined) {
       writer.uint32(32).int32(message.limit);
+    }
+    if (message.kidsSafeOnly !== false) {
+      writer.uint32(40).bool(message.kidsSafeOnly);
     }
     return writer;
   },
@@ -1163,6 +1180,14 @@ export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
             message.limit = reader.int32();
             continue;
           }
+          case 5: {
+            if (tag !== 40) {
+              break;
+            }
+
+            message.kidsSafeOnly = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -1181,6 +1206,11 @@ export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
       type: isSet(object.type) ? titleTypeFromJSON(object.type) : undefined,
       cursor: isSet(object.cursor) ? globalThis.String(object.cursor) : undefined,
       limit: isSet(object.limit) ? globalThis.Number(object.limit) : undefined,
+      kidsSafeOnly: isSet(object.kidsSafeOnly)
+        ? globalThis.Boolean(object.kidsSafeOnly)
+        : isSet(object.kids_safe_only)
+        ? globalThis.Boolean(object.kids_safe_only)
+        : false,
     };
   },
 
@@ -1198,6 +1228,9 @@ export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
     if (message.limit !== undefined) {
       obj.limit = Math.round(message.limit);
     }
+    if (message.kidsSafeOnly !== false) {
+      obj.kidsSafeOnly = message.kidsSafeOnly;
+    }
     return obj;
   },
 
@@ -1210,6 +1243,7 @@ export const BrowseTitlesRequest: MessageFns<BrowseTitlesRequest> = {
     message.type = object.type ?? undefined;
     message.cursor = object.cursor ?? undefined;
     message.limit = object.limit ?? undefined;
+    message.kidsSafeOnly = object.kidsSafeOnly ?? false;
     return message;
   },
 };
@@ -1304,7 +1338,7 @@ export const BrowseTitlesResponse: MessageFns<BrowseTitlesResponse> = {
 };
 
 function createBaseSearchTitlesRequest(): SearchTitlesRequest {
-  return { query: "", limit: undefined };
+  return { query: "", limit: undefined, kidsSafeOnly: false };
 }
 
 export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
@@ -1314,6 +1348,9 @@ export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
     }
     if (message.limit !== undefined) {
       writer.uint32(16).int32(message.limit);
+    }
+    if (message.kidsSafeOnly !== false) {
+      writer.uint32(24).bool(message.kidsSafeOnly);
     }
     return writer;
   },
@@ -1347,6 +1384,14 @@ export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
             message.limit = reader.int32();
             continue;
           }
+          case 3: {
+            if (tag !== 24) {
+              break;
+            }
+
+            message.kidsSafeOnly = reader.bool();
+            continue;
+          }
         }
         if ((tag & 7) === 4 || tag === 0) {
           break;
@@ -1363,6 +1408,11 @@ export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
     return {
       query: isSet(object.query) ? globalThis.String(object.query) : "",
       limit: isSet(object.limit) ? globalThis.Number(object.limit) : undefined,
+      kidsSafeOnly: isSet(object.kidsSafeOnly)
+        ? globalThis.Boolean(object.kidsSafeOnly)
+        : isSet(object.kids_safe_only)
+        ? globalThis.Boolean(object.kids_safe_only)
+        : false,
     };
   },
 
@@ -1374,6 +1424,9 @@ export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
     if (message.limit !== undefined) {
       obj.limit = Math.round(message.limit);
     }
+    if (message.kidsSafeOnly !== false) {
+      obj.kidsSafeOnly = message.kidsSafeOnly;
+    }
     return obj;
   },
 
@@ -1384,6 +1437,7 @@ export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
     const message = createBaseSearchTitlesRequest();
     message.query = object.query ?? "";
     message.limit = object.limit ?? undefined;
+    message.kidsSafeOnly = object.kidsSafeOnly ?? false;
     return message;
   },
 };

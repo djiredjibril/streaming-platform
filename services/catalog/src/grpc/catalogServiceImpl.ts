@@ -186,6 +186,7 @@ export function createCatalogServiceImpl(deps: CatalogServiceDeps) {
             type: call.request.type !== undefined ? titleTypeToDomain[call.request.type] : undefined,
             cursor: call.request.cursor,
             limit: call.request.limit,
+            kidsSafeOnly: call.request.kidsSafeOnly,
           },
           deps.titleRepository,
         );
@@ -204,7 +205,7 @@ export function createCatalogServiceImpl(deps: CatalogServiceDeps) {
     ): Promise<void> {
       try {
         const titles = await searchTitles(
-          { query: call.request.query, limit: call.request.limit },
+          { query: call.request.query, limit: call.request.limit, kidsSafeOnly: call.request.kidsSafeOnly },
           deps.titleRepository,
         );
         callback(null, { titles: titles.map(titleToProto) });

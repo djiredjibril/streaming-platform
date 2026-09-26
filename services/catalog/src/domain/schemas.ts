@@ -4,6 +4,15 @@ export const titleTypeSchema = z.enum(['MOVIE', 'SERIES', 'SHORT']);
 export const contentRatingSchema = z.enum(['G', 'PG', 'PG_13', 'R', 'NC_17', 'UNRATED']);
 
 /**
+ * Ratings a kids profile is allowed to see (docs/03-catalog.md, "Filtrage
+ * kids"). Deliberately conservative: PG_13/R/NC_17 are obviously excluded,
+ * and UNRATED is excluded too rather than assumed safe — an unrated title
+ * could be anything, so the safe default is to hide it from a kids profile
+ * until someone rates it.
+ */
+export const KIDS_SAFE_RATINGS: ReadonlyArray<z.infer<typeof contentRatingSchema>> = ['G', 'PG'];
+
+/**
  * Validates CreateTitle's input shape. `runtimeMinutes` is required for
  * MOVIE/SHORT and rejected for SERIES (docs/03-catalog.md: runtime lives on
  * Episode for a series, once that feature exists) — enforced here rather
@@ -59,6 +68,9 @@ export const browseTitlesInputSchema = z.object({
   // Capped at 50 — an unbounded limit would let a caller pull the entire
   // catalog in one request, defeating the point of paginating at all.
   limit: z.number().int().min(1).max(50).default(20),
+  // The Gateway resolves this from the active profile — see BrowseTitles'
+  // comment in /proto/catalog.proto.
+  kidsSafeOnly: z.boolean().default(false),
 });
 
 export type BrowseTitlesInput = z.infer<typeof browseTitlesInputSchema>;
@@ -69,6 +81,8 @@ export const searchTitlesInputSchema = z.object({
   // Capped at 50, same reasoning as BrowseTitles' limit — no cursor here
   // (see SearchTitles' comment in /proto/catalog.proto for why).
   limit: z.number().int().min(1).max(50).default(20),
+  // Same meaning as BrowseTitlesInput.kidsSafeOnly.
+  kidsSafeOnly: z.boolean().default(false),
 });
 
 export type SearchTitlesInput = z.infer<typeof searchTitlesInputSchema>;
