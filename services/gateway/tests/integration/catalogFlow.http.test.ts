@@ -332,4 +332,38 @@ describe('GraphQL /graphql (real Identity + Catalog gRPC servers + real Postgres
     });
     expect(page2.data.browseTitles.titles).toEqual([{ id: first }]);
   });
+
+  it('searchTitles is public and finds a real published title end-to-end', async () => {
+    const accessToken = await registerAndGetAdminToken();
+
+    const createBody = await graphql(
+      CREATE_TITLE_MUTATION,
+      {
+        input: {
+          type: 'MOVIE',
+          originalTitle: 'Search GraphQL Dragons',
+          synopsis: 'Y',
+          releaseYear: 2021,
+          rating: 'PG',
+          runtimeMinutes: 90,
+        },
+      },
+      { authorization: `Bearer ${accessToken}` },
+    );
+    const titleId = createBody.data.createTitle.id;
+    await graphql(
+      ATTACH_MEDIA_ASSET_MUTATION,
+      { input: { titleId, url: 'https://example.com/v.mp4' } },
+      { authorization: `Bearer ${accessToken}` },
+    );
+    await graphql(PUBLISH_TITLE_MUTATION, { id: titleId }, { authorization: `Bearer ${accessToken}` });
+
+    // No auth header at all — searchTitles is a public query.
+    const result = await graphql('query($query: String!) { searchTitles(query: $query) { id } }', {
+      query: 'dragons',
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(result.data.searchTitles).toEqual([{ id: titleId }]);
+  });
 });

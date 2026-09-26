@@ -72,6 +72,17 @@ export class InMemoryTitleRepository implements TitleRepository {
     return titles.slice(0, filter.limit);
   }
 
+  /** Simplified stand-in for the real ts_rank-ordered Postgres search (infra/prismaTitleRepository.ts) — plain case-insensitive substring match on originalTitle/synopsis, title matches sorted before synopsis-only matches. Real ranking behavior is covered at the integration level, against real Postgres full-text search. */
+  async search(query: string, limit: number): Promise<TitleRecord[]> {
+    const needle = query.toLowerCase();
+    const published = [...this.titlesById.values()].filter((t) => t.status === 'PUBLISHED');
+    const titleMatches = published.filter((t) => t.originalTitle.toLowerCase().includes(needle));
+    const synopsisOnlyMatches = published.filter(
+      (t) => !t.originalTitle.toLowerCase().includes(needle) && t.synopsis.toLowerCase().includes(needle),
+    );
+    return [...titleMatches, ...synopsisOnlyMatches].slice(0, limit);
+  }
+
   /** Test-only helper: bypasses the (not-yet-built) un-publish/archive mutation to set a status directly. */
   forceStatus(slugOrId: string, status: TitleRecord['status']): void {
     const title = this.titlesById.get(slugOrId) ?? [...this.titlesById.values()].find((t) => t.slug === slugOrId);

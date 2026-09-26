@@ -57,4 +57,6 @@ export interface TitleRepository {
   updateStatus(id: string, status: TitleRecord['status']): Promise<TitleRecord>;
   /** PUBLISHED titles only, newest first (createdAt desc, id desc as tiebreaker) — see BrowseTitles's comment in /proto/catalog.proto. */
   browse(filter: BrowseTitlesFilter): Promise<TitleRecord[]>;
+  /** PUBLISHED titles only, ordered by relevance (ts_rank) descending — see SearchTitles's comment in /proto/catalog.proto. */
+  search(query: string, limit: number): Promise<TitleRecord[]>;
 }

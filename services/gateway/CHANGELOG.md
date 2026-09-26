@@ -11,3 +11,4 @@
 - feat: `Mutation.attachMediaAsset`/`publishTitle` exposés en GraphQL (admin uniquement) — ferme le flux Phase 1 "titre créé → publié → lu" ; `Title.isPlayable`/`videoUrl` dérivés du statut du `MediaAsset`
 - feat: `Title.genres`/`CreateTitleInput.genres` exposés en GraphQL (`[String!]`)
 - feat: `Query.browseTitles` — public, pagination par curseur, filtres genre/type ; `TitleConnection` volontairement pas une Relay Connection stricte (pas de curseur par arête)
+- feat: `Query.searchTitles` — public, recherche full-text classée par pertinence (`ts_rank` via `CatalogService.SearchTitles`), pas de pagination
