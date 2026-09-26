@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../../generated/prisma-client/index.js';
+import { Prisma, type PrismaClient } from '../../generated/prisma-client/index.js';
 import type {
   BrowseTitlesFilter,
   CreateTitleRecordInput,
@@ -84,6 +84,33 @@ export class PrismaTitleRepository implements TitleRepository {
       include: includeMediaAssetAndGenres,
     });
     return titles.map(toTitleRecord);
+  }
+
+  async search(query: string, limit: number): Promise<TitleRecord[]> {
+    // Two queries rather than one big join: `search_vector` is `Unsupported`
+    // in the Prisma schema (see its comment there), so it can't appear in a
+    // normal `findMany` filter/orderBy — only in raw SQL. This raw query
+    // gets just the ranked ids; the normal `findMany` below reuses the
+    // existing MediaAsset/genre include instead of duplicating that join by
+    // hand in raw SQL.
+    const ranked = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT id FROM titles
+      WHERE status = 'PUBLISHED'
+        AND search_vector @@ plainto_tsquery('english', ${query})
+      ORDER BY ts_rank(search_vector, plainto_tsquery('english', ${query})) DESC
+      LIMIT ${limit}
+    `);
+    if (ranked.length === 0) return [];
+
+    const titles = await this.prisma.title.findMany({
+      where: { id: { in: ranked.map((r) => r.id) } },
+      include: includeMediaAssetAndGenres,
+    });
+    const byId = new Map(titles.map((t) => [t.id, t]));
+    // findMany doesn't preserve the `IN (...)` order — re-sort to match the
+    // raw query's ts_rank order (SearchTitlesResponse's contract: "the
+    // Gateway must not re-sort these").
+    return ranked.map((r) => toTitleRecord(byId.get(r.id)!));
   }
 }
 

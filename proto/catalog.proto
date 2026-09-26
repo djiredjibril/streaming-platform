@@ -49,6 +49,17 @@ service CatalogService {
   // DRAFT/ARCHIVED title, same rule as GetTitleBySlug. Public: no admin
   // check, unlike every other RPC on this service.
   rpc BrowseTitles(BrowseTitlesRequest) returns (BrowseTitlesResponse);
+
+  // Full-text search over original_title/synopsis (03-catalog.md,
+  // "Recherche et indexation": PostgreSQL tsvector + GIN index — a
+  // generated, stored tsvector column, not computed on every query).
+  // Ranked by relevance (ts_rank), best match first. Never returns a
+  // DRAFT/ARCHIVED title, same rule as GetTitleBySlug/BrowseTitles. No
+  // pagination in V1 — just a capped result list, same as BrowseTitles'
+  // limit but without a cursor (search result sets are expected to be
+  // small; add cursor pagination here too if that stops being true).
+  // Public: no admin check, same as BrowseTitles.
+  rpc SearchTitles(SearchTitlesRequest) returns (SearchTitlesResponse);
 }
 
 enum TitleType {
@@ -150,4 +161,15 @@ message BrowseTitlesResponse {
   repeated Title titles = 1;
   // Absent once there are no more pages.
   optional string next_cursor = 2;
+}
+
+message SearchTitlesRequest {
+  string query = 1;
+  // Defaults to 20, capped at 50 — see domain/searchTitles.ts.
+  optional int32 limit = 2;
+}
+
+message SearchTitlesResponse {
+  // Ordered by ts_rank descending — the Gateway must not re-sort these.
+  repeated Title titles = 1;
 }

@@ -312,6 +312,17 @@ export interface BrowseTitlesResponse {
   nextCursor?: string | undefined;
 }
 
+export interface SearchTitlesRequest {
+  query: string;
+  /** Defaults to 20, capped at 50 — see domain/searchTitles.ts. */
+  limit?: number | undefined;
+}
+
+export interface SearchTitlesResponse {
+  /** Ordered by ts_rank descending — the Gateway must not re-sort these. */
+  titles: Title[];
+}
+
 function createBaseTitle(): Title {
   return {
     id: "",
@@ -1292,6 +1303,158 @@ export const BrowseTitlesResponse: MessageFns<BrowseTitlesResponse> = {
   },
 };
 
+function createBaseSearchTitlesRequest(): SearchTitlesRequest {
+  return { query: "", limit: undefined };
+}
+
+export const SearchTitlesRequest: MessageFns<SearchTitlesRequest> = {
+  encode(message: SearchTitlesRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.query !== "") {
+      writer.uint32(10).string(message.query);
+    }
+    if (message.limit !== undefined) {
+      writer.uint32(16).int32(message.limit);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SearchTitlesRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSearchTitlesRequest();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.query = reader.string();
+            continue;
+          }
+          case 2: {
+            if (tag !== 16) {
+              break;
+            }
+
+            message.limit = reader.int32();
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SearchTitlesRequest {
+    return {
+      query: isSet(object.query) ? globalThis.String(object.query) : "",
+      limit: isSet(object.limit) ? globalThis.Number(object.limit) : undefined,
+    };
+  },
+
+  toJSON(message: SearchTitlesRequest): unknown {
+    const obj: any = {};
+    if (message.query !== "") {
+      obj.query = message.query;
+    }
+    if (message.limit !== undefined) {
+      obj.limit = Math.round(message.limit);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SearchTitlesRequest>, I>>(base?: I): SearchTitlesRequest {
+    return SearchTitlesRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SearchTitlesRequest>, I>>(object: I): SearchTitlesRequest {
+    const message = createBaseSearchTitlesRequest();
+    message.query = object.query ?? "";
+    message.limit = object.limit ?? undefined;
+    return message;
+  },
+};
+
+function createBaseSearchTitlesResponse(): SearchTitlesResponse {
+  return { titles: [] };
+}
+
+export const SearchTitlesResponse: MessageFns<SearchTitlesResponse> = {
+  encode(message: SearchTitlesResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.titles) {
+      Title.encode(v!, writer.uint32(10).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SearchTitlesResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const previousRecursionDepth = (reader as any).__tsProtoDecodeDepth ?? 0;
+    if (previousRecursionDepth >= 100) {
+      throw new globalThis.Error("protobuf decode recursion limit exceeded");
+    }
+    (reader as any).__tsProtoDecodeDepth = previousRecursionDepth + 1;
+    try {
+      const end = length === undefined ? reader.len : reader.pos + length;
+      const message = createBaseSearchTitlesResponse();
+      while (reader.pos < end) {
+        const tag = reader.uint32();
+        switch (tag >>> 3) {
+          case 1: {
+            if (tag !== 10) {
+              break;
+            }
+
+            message.titles.push(Title.decode(reader, reader.uint32()));
+            continue;
+          }
+        }
+        if ((tag & 7) === 4 || tag === 0) {
+          break;
+        }
+        reader.skip(tag & 7);
+      }
+      return message;
+    } finally {
+      (reader as any).__tsProtoDecodeDepth = previousRecursionDepth;
+    }
+  },
+
+  fromJSON(object: any): SearchTitlesResponse {
+    return { titles: globalThis.Array.isArray(object?.titles) ? object.titles.map((e: any) => Title.fromJSON(e)) : [] };
+  },
+
+  toJSON(message: SearchTitlesResponse): unknown {
+    const obj: any = {};
+    if (message.titles?.length) {
+      obj.titles = message.titles.map((e) => Title.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SearchTitlesResponse>, I>>(base?: I): SearchTitlesResponse {
+    return SearchTitlesResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SearchTitlesResponse>, I>>(object: I): SearchTitlesResponse {
+    const message = createBaseSearchTitlesResponse();
+    message.titles = object.titles?.map((e) => Title.fromPartial(e)) || [];
+    return message;
+  },
+};
+
 /**
  * CatalogService is the source of truth for content metadata (not the video
  * files themselves — see 04-media-pipeline.md). Called internally by the
@@ -1392,6 +1555,27 @@ export const CatalogServiceService = {
       Buffer.from(BrowseTitlesResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): BrowseTitlesResponse => BrowseTitlesResponse.decode(value),
   },
+  /**
+   * Full-text search over original_title/synopsis (03-catalog.md,
+   * "Recherche et indexation": PostgreSQL tsvector + GIN index — a
+   * generated, stored tsvector column, not computed on every query).
+   * Ranked by relevance (ts_rank), best match first. Never returns a
+   * DRAFT/ARCHIVED title, same rule as GetTitleBySlug/BrowseTitles. No
+   * pagination in V1 — just a capped result list, same as BrowseTitles'
+   * limit but without a cursor (search result sets are expected to be
+   * small; add cursor pagination here too if that stops being true).
+   * Public: no admin check, same as BrowseTitles.
+   */
+  searchTitles: {
+    path: "/catalog.v1.CatalogService/SearchTitles" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SearchTitlesRequest): Buffer => Buffer.from(SearchTitlesRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SearchTitlesRequest => SearchTitlesRequest.decode(value),
+    responseSerialize: (value: SearchTitlesResponse): Buffer =>
+      Buffer.from(SearchTitlesResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SearchTitlesResponse => SearchTitlesResponse.decode(value),
+  },
 } as const;
 
 export interface CatalogServiceServer extends UntypedServiceImplementation {
@@ -1438,6 +1622,18 @@ export interface CatalogServiceServer extends UntypedServiceImplementation {
    * check, unlike every other RPC on this service.
    */
   browseTitles: handleUnaryCall<BrowseTitlesRequest, BrowseTitlesResponse>;
+  /**
+   * Full-text search over original_title/synopsis (03-catalog.md,
+   * "Recherche et indexation": PostgreSQL tsvector + GIN index — a
+   * generated, stored tsvector column, not computed on every query).
+   * Ranked by relevance (ts_rank), best match first. Never returns a
+   * DRAFT/ARCHIVED title, same rule as GetTitleBySlug/BrowseTitles. No
+   * pagination in V1 — just a capped result list, same as BrowseTitles'
+   * limit but without a cursor (search result sets are expected to be
+   * small; add cursor pagination here too if that stops being true).
+   * Public: no admin check, same as BrowseTitles.
+   */
+  searchTitles: handleUnaryCall<SearchTitlesRequest, SearchTitlesResponse>;
 }
 
 export interface CatalogServiceClient extends Client {
@@ -1553,6 +1749,32 @@ export interface CatalogServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: BrowseTitlesResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Full-text search over original_title/synopsis (03-catalog.md,
+   * "Recherche et indexation": PostgreSQL tsvector + GIN index — a
+   * generated, stored tsvector column, not computed on every query).
+   * Ranked by relevance (ts_rank), best match first. Never returns a
+   * DRAFT/ARCHIVED title, same rule as GetTitleBySlug/BrowseTitles. No
+   * pagination in V1 — just a capped result list, same as BrowseTitles'
+   * limit but without a cursor (search result sets are expected to be
+   * small; add cursor pagination here too if that stops being true).
+   * Public: no admin check, same as BrowseTitles.
+   */
+  searchTitles(
+    request: SearchTitlesRequest,
+    callback: (error: ServiceError | null, response: SearchTitlesResponse) => void,
+  ): ClientUnaryCall;
+  searchTitles(
+    request: SearchTitlesRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SearchTitlesResponse) => void,
+  ): ClientUnaryCall;
+  searchTitles(
+    request: SearchTitlesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SearchTitlesResponse) => void,
   ): ClientUnaryCall;
 }
 

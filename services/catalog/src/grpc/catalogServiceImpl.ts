@@ -7,6 +7,7 @@ import {
   InvalidAttachMediaAssetInputError,
   InvalidBrowseTitlesInputError,
   InvalidCreateTitleInputError,
+  InvalidSearchTitlesInputError,
   MediaAssetNotReadyError,
   SlugAlreadyExistsError,
   TitleNotFoundError,
@@ -14,6 +15,7 @@ import {
 import { getTitleBySlug } from '../domain/getTitleBySlug.js';
 import type { MediaAssetRepository } from '../domain/mediaAssetRepository.js';
 import { publishTitle } from '../domain/publishTitle.js';
+import { searchTitles } from '../domain/searchTitles.js';
 import type { MediaAssetStatusInput, TitleRecord, TitleRepository } from '../domain/titleRepository.js';
 import type { ContentRatingInput, TitleTypeInput } from '../domain/schemas.js';
 import {
@@ -25,6 +27,8 @@ import {
   type CreateTitleRequest,
   type GetTitleBySlugRequest,
   type PublishTitleRequest,
+  type SearchTitlesRequest,
+  type SearchTitlesResponse,
   type Title as ProtoTitle,
   TitleStatus,
   TitleType,
@@ -193,6 +197,21 @@ export function createCatalogServiceImpl(deps: CatalogServiceDeps) {
         callback(toGrpcError(error), null);
       }
     },
+
+    async searchTitles(
+      call: ServerUnaryCall<SearchTitlesRequest, SearchTitlesResponse>,
+      callback: sendUnaryData<SearchTitlesResponse>,
+    ): Promise<void> {
+      try {
+        const titles = await searchTitles(
+          { query: call.request.query, limit: call.request.limit },
+          deps.titleRepository,
+        );
+        callback(null, { titles: titles.map(titleToProto) });
+      } catch (error) {
+        callback(toGrpcError(error), null);
+      }
+    },
   };
 }
 
@@ -214,6 +233,9 @@ function toGrpcError(error: unknown): grpc.ServiceError {
     return buildServiceError(grpc.status.FAILED_PRECONDITION, error.message);
   }
   if (error instanceof InvalidBrowseTitlesInputError) {
+    return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
+  }
+  if (error instanceof InvalidSearchTitlesInputError) {
     return buildServiceError(grpc.status.INVALID_ARGUMENT, error.message);
   }
   return buildServiceError(grpc.status.INTERNAL, 'Internal error');

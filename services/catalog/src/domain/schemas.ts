@@ -62,3 +62,13 @@ export const browseTitlesInputSchema = z.object({
 });
 
 export type BrowseTitlesInput = z.infer<typeof browseTitlesInputSchema>;
+
+/** Validates SearchTitles' input shape. `query` is passed to Postgres' `plainto_tsquery` — no special-character escaping needed here, that function already treats its input as plain text, not tsquery syntax. */
+export const searchTitlesInputSchema = z.object({
+  query: z.string().trim().min(1, 'query is required').max(200, 'query is too long'),
+  // Capped at 50, same reasoning as BrowseTitles' limit — no cursor here
+  // (see SearchTitles' comment in /proto/catalog.proto for why).
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
+export type SearchTitlesInput = z.infer<typeof searchTitlesInputSchema>;

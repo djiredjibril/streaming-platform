@@ -67,6 +67,16 @@ model Title {
   mediaAsset   MediaAsset?
   titleGenres  TitleGenre[]
 
+  // Generated (STORED), weighted originalTitle > synopsis — see the raw
+  // SQL in this migration's up script, since Prisma can't express a
+  // generated tsvector column or a GIN index declaratively. `Unsupported`
+  // keeps Prisma aware the column exists (introspection-safe) without
+  // trying to manage its value; every write to this column happens
+  // entirely in Postgres, never through Prisma Client. Read via
+  // `$queryRaw` in infra/prismaTitleRepository.ts's `search()` — regular
+  // Prisma Client queries can't filter/order on an Unsupported field.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
   @@map("titles")
 }
 

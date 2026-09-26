@@ -45,3 +45,11 @@ export class InvalidBrowseTitlesInputError extends Error {
     this.name = 'InvalidBrowseTitlesInputError';
   }
 }
+
+/** Thrown when SearchTitles' input fails Zod validation (schemas.ts). Mapped to gRPC INVALID_ARGUMENT. */
+export class InvalidSearchTitlesInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidSearchTitlesInputError';
+  }
+}
