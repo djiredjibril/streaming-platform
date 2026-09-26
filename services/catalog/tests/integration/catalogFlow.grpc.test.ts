@@ -88,6 +88,21 @@ describe('CatalogService (real Postgres + gRPC)', () => {
     });
   }
 
+  function browseTitles(request: Parameters<CatalogServiceClient['browseTitles']>[0]) {
+    return new Promise<{ titles: Title[]; nextCursor?: string }>((resolve, reject) => {
+      client.browseTitles(request, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
+  async function createAndPublish(overrides: Partial<Parameters<CatalogServiceClient['createTitle']>[0]>) {
+    const title = await createTitle({ ...movieInput, ...overrides });
+    await attachMediaAsset({ titleId: title.id, url: 'https://example.com/v.mp4' });
+    return publishTitle(title.id);
+  }
+
   const movieInput = {
     type: TitleType.MOVIE,
     originalTitle: 'The Matrix',
@@ -188,6 +203,57 @@ describe('CatalogService (real Postgres + gRPC)', () => {
     it('createTitle with no genres defaults to an empty array', async () => {
       const title = await createTitle({ ...movieInput, originalTitle: 'No Genre Film', releaseYear: 2028 });
       expect(title.genres).toEqual([]);
+    });
+  });
+
+  describe('browseTitles', () => {
+    it('never returns a DRAFT title', async () => {
+      const draft = await createTitle({ ...movieInput, originalTitle: 'Browse Draft', releaseYear: 2010 });
+
+      const result = await browseTitles({ limit: 50 });
+
+      expect(result.titles.some((t) => t.id === draft.id)).toBe(false);
+    });
+
+    it('paginates real rows across two pages using the returned cursor', async () => {
+      const first = await createAndPublish({ originalTitle: 'Browse Page A', releaseYear: 2011 });
+      const second = await createAndPublish({ originalTitle: 'Browse Page B', releaseYear: 2012 });
+      const third = await createAndPublish({ originalTitle: 'Browse Page C', releaseYear: 2013 });
+
+      const page1 = await browseTitles({ limit: 2 });
+      expect(page1.titles.map((t) => t.id)).toEqual([third.id, second.id]);
+      expect(page1.nextCursor).toBeTruthy();
+
+      const page2 = await browseTitles({ limit: 2, cursor: page1.nextCursor });
+      expect(page2.titles.map((t) => t.id)).toContain(first.id);
+      expect(page2.titles.map((t) => t.id)).not.toContain(second.id);
+      expect(page2.titles.map((t) => t.id)).not.toContain(third.id);
+    });
+
+    it('filters by genre and type together', async () => {
+      const match = await createAndPublish({
+        originalTitle: 'Browse Genre Match',
+        releaseYear: 2014,
+        type: TitleType.MOVIE,
+        genres: ['BrowseTestGenre'],
+      });
+      await createAndPublish({
+        originalTitle: 'Browse Genre No Match Type',
+        releaseYear: 2015,
+        type: TitleType.SERIES,
+        runtimeMinutes: undefined,
+        genres: ['BrowseTestGenre'],
+      });
+
+      const result = await browseTitles({ genre: 'BrowseTestGenre', type: TitleType.MOVIE, limit: 50 });
+
+      expect(result.titles.map((t) => t.id)).toEqual([match.id]);
+    });
+
+    it('rejects a malformed cursor with INVALID_ARGUMENT', async () => {
+      await expect(browseTitles({ cursor: 'not-a-real-cursor' })).rejects.toMatchObject({
+        code: grpc.status.INVALID_ARGUMENT,
+      });
     });
   });
 });

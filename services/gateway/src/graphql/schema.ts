@@ -70,12 +70,32 @@ export const typeDefs = /* GraphQL */ `
     url: String!
   }
 
+  """
+  Deliberately not a strict Relay Connection (no per-edge cursor) —
+  CatalogService.BrowseTitles only returns one cursor for the whole page
+  (the last title's), since pagination here is forward-only ("next page"),
+  never "resume from an arbitrary edge". Adding per-edge cursors would need
+  Title.createdAt on the wire, which nothing else needs yet.
+  """
+  type TitleConnection {
+    titles: [Title!]!
+    """ Null once there are no more pages. """
+    nextCursor: String
+  }
+
   type Query {
     """
     Null for an unknown slug OR a real title that isn't published —
     see CatalogService.GetTitleBySlug's comment in /proto/catalog.proto.
     """
     title(slug: String!): Title
+    """
+    Published titles, newest first. Public — no admin check, unlike every
+    Mutation on this schema. cursor/limit name the underlying gRPC fields
+    directly rather than Relay's after/first — see TitleConnection's
+    docstring for why this isn't a strict Connection.
+    """
+    browseTitles(genre: String, type: TitleType, cursor: String, limit: Int): TitleConnection!
   }
 
   type Mutation {

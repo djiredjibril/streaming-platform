@@ -10,8 +10,9 @@ Source de vérité pour les métadonnées de contenu (films/séries/shorts) — 
 - `GetTitleBySlug` : ne retourne jamais un titre qui n'est pas `PUBLISHED` — un vrai titre `DRAFT`/`ARCHIVED` se comporte exactement comme un slug inconnu (`NOT_FOUND` dans les deux cas). C'est ce qui empêche ce RPC de servir à découvrir du contenu non publié en essayant des slugs (`docs/03-catalog.md`, "Bonnes pratiques").
 - `AttachMediaAsset` : associe (ou remplace) le fichier vidéo statique d'un `Title` — un seul par titre en V1 (pas encore d'`Episode`). Marque l'asset `READY` immédiatement : **pas de vrai pipeline d'upload/transcodage** (`04-media-pipeline.md`, Phase 2) — l'URL fournie par l'appelant est supposée déjà pointer vers un fichier lisible.
 - `PublishTitle` : bascule un `Title` en `PUBLISHED` — refuse (`FAILED_PRECONDITION`) tant que le titre n'a pas de `MediaAsset` `READY`. Un titre n'est jamais publié sans avoir quelque chose de regardable derrière (`docs/03-catalog.md`, "Bonnes pratiques"). Pas de mutation pour dépublier/archiver pour l'instant.
+- `BrowseTitles` : liste les titres `PUBLISHED`, plus récents d'abord, filtrable par `genre`/`type`. **Public** (aucune vérification admin, contrairement aux 4 autres RPCs). Pagination par curseur (`docs/03-catalog.md`, "Bonnes pratiques" — pas offset/limit) : le curseur encode `(created_at, id)` en base64url opaque (`src/domain/cursor.ts`), `id` sert de départage quand deux titres partagent le même `created_at`. Limite par défaut 20, plafonnée à 50.
 
-**Frontière de confiance** : ces 4 RPCs ne revalident pas de token — ils font confiance à leur appelant (la Gateway, seule à pouvoir les atteindre, jamais exposée au navigateur) d'avoir déjà vérifié via `IdentityService.ValidateToken` que le compte appelant est admin (`Account.isAdmin`, cf. `services/identity/README.md`). C'est la même frontière de confiance déjà établie pour `accountId` sur `IdentityService.CreateProfile`.
+**Frontière de confiance** : `CreateTitle`/`AttachMediaAsset`/`PublishTitle` ne revalident pas de token — ils font confiance à leur appelant (la Gateway, seule à pouvoir les atteindre, jamais exposée au navigateur) d'avoir déjà vérifié via `IdentityService.ValidateToken` que le compte appelant est admin (`Account.isAdmin`, cf. `services/identity/README.md`). C'est la même frontière de confiance déjà établie pour `accountId` sur `IdentityService.CreateProfile`. `GetTitleBySlug`/`BrowseTitles` n'ont pas besoin de cette vérification : ce sont des lectures publiques, aucun compte n'est requis pour parcourir le catalogue publié.
 
 ## Architecture
 
@@ -29,12 +30,14 @@ Même architecture hexagonale que Identity (`services/AGENT.md`, section 3) : `/
 | `src/domain/getTitleBySlug.ts` | Logique métier de `GetTitleBySlug` : ne renvoie que du `PUBLISHED` |
 | `src/domain/attachMediaAsset.ts` | Logique métier de `AttachMediaAsset` : attache/remplace le fichier vidéo statique d'un titre |
 | `src/domain/publishTitle.ts` | Logique métier de `PublishTitle` : refuse tant qu'aucun `MediaAsset READY` n'existe |
+| `src/domain/browseTitles.ts` | Logique métier de `BrowseTitles` : pagination par curseur, filtres genre/type |
+| `src/domain/cursor.ts` | Encode/décode le curseur opaque `(created_at, id)` de `BrowseTitles` |
 | `src/domain/slug.ts` | Génération de slug (titre + année, accents/ponctuation normalisés) |
 | `src/domain/schemas.ts` | Schémas Zod de validation d'entrée, dont la règle croisée `runtimeMinutes` (obligatoire MOVIE/SHORT, interdit SERIES) |
 | `src/domain/errors.ts` | Erreurs métier typées, mappées en codes gRPC par `catalogServiceImpl.ts` |
 | `src/domain/titleRepository.ts` | Port (interface) `TitleRepository` — permet de tester la logique métier sans DB |
 | `src/domain/mediaAssetRepository.ts` | Port (interface) `MediaAssetRepository` |
-| `src/infra/prismaTitleRepository.ts` | Implémentation Prisma du port `TitleRepository` — joint le (au plus un) `MediaAsset` et les genres taggés sur chaque lecture |
+| `src/infra/prismaTitleRepository.ts` | Implémentation Prisma du port `TitleRepository` — joint le (au plus un) `MediaAsset` et les genres taggés sur chaque lecture ; `browse()` implémente la pagination par curseur via un `WHERE` composé (`created_at`, `id`), pas l'option `cursor` native de Prisma (limitée à un seul champ unique) |
 | `src/infra/prismaMediaAssetRepository.ts` | Implémentation Prisma du port `MediaAssetRepository` (`upsert` par `titleId`) |
 | `src/infra/prismaClient.ts` | Singleton `PrismaClient` du process |
 | `src/infra/logger.ts` | Logger Pino du service |
@@ -68,7 +71,7 @@ npm test              # depuis la racine, ou `npx vitest run` ici
 ```
 
 - `tests/unit/` : logique `/domain` pure, repositories en mémoire (`tests/unit/fakes/`) — pas de DB
-- `tests/integration/catalogFlow.grpc.test.ts` : `CreateTitle` → `GetTitleBySlug` → `AttachMediaAsset` → `PublishTitle`, vrai PostgreSQL éphémère (Testcontainers) + vrai client gRPC.
+- `tests/integration/catalogFlow.grpc.test.ts` : `CreateTitle` → `GetTitleBySlug` → `AttachMediaAsset` → `PublishTitle` → `BrowseTitles`, vrai PostgreSQL éphémère (Testcontainers) + vrai client gRPC.
 
 ## Régénérer les stubs gRPC
 

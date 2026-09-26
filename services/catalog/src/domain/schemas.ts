@@ -50,3 +50,15 @@ export const attachMediaAssetInputSchema = z.object({
 });
 
 export type AttachMediaAssetInput = z.infer<typeof attachMediaAssetInputSchema>;
+
+/** Validates BrowseTitles' input shape. `cursor` is checked here only for "non-empty string" — its actual (createdAt, id) decoding happens in domain/cursor.ts, called from browseTitles.ts. */
+export const browseTitlesInputSchema = z.object({
+  genre: z.string().trim().min(1).optional(),
+  type: titleTypeSchema.optional(),
+  cursor: z.string().min(1).optional(),
+  // Capped at 50 — an unbounded limit would let a caller pull the entire
+  // catalog in one request, defeating the point of paginating at all.
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
+export type BrowseTitlesInput = z.infer<typeof browseTitlesInputSchema>;
