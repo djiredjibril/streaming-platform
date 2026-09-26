@@ -97,6 +97,15 @@ describe('CatalogService (real Postgres + gRPC)', () => {
     });
   }
 
+  function searchTitles(request: Parameters<CatalogServiceClient['searchTitles']>[0]) {
+    return new Promise<{ titles: Title[] }>((resolve, reject) => {
+      client.searchTitles(request, (error, response) => {
+        if (error) reject(error);
+        else resolve(response!);
+      });
+    });
+  }
+
   async function createAndPublish(overrides: Partial<Parameters<CatalogServiceClient['createTitle']>[0]>) {
     const title = await createTitle({ ...movieInput, ...overrides });
     await attachMediaAsset({ titleId: title.id, url: 'https://example.com/v.mp4' });
@@ -254,6 +263,48 @@ describe('CatalogService (real Postgres + gRPC)', () => {
       await expect(browseTitles({ cursor: 'not-a-real-cursor' })).rejects.toMatchObject({
         code: grpc.status.INVALID_ARGUMENT,
       });
+    });
+  });
+
+  describe('searchTitles (real Postgres tsvector + GIN index)', () => {
+    it('finds a published title by title match, ranked ahead of a synopsis-only match', async () => {
+      const titleMatch = await createAndPublish({
+        originalTitle: 'Search Dragons Rising',
+        synopsis: 'An unrelated plot.',
+        releaseYear: 2019,
+        genres: [],
+      });
+      const synopsisMatch = await createAndPublish({
+        originalTitle: 'Search Something Else',
+        synopsis: 'A story about dragons and knights.',
+        releaseYear: 2020,
+        genres: [],
+      });
+
+      const result = await searchTitles({ query: 'dragons' });
+
+      expect(result.titles.map((t) => t.id)).toEqual([titleMatch.id, synopsisMatch.id]);
+    });
+
+    it('never returns a DRAFT title', async () => {
+      await createTitle({
+        ...movieInput,
+        originalTitle: 'Search Draft Dragons',
+        releaseYear: 2018,
+        genres: [],
+      });
+
+      const result = await searchTitles({ query: 'dragons' });
+      expect(result.titles.some((t) => t.originalTitle === 'Search Draft Dragons')).toBe(false);
+    });
+
+    it('returns an empty list for no match', async () => {
+      const result = await searchTitles({ query: 'zzz-no-such-term-zzz' });
+      expect(result.titles).toEqual([]);
+    });
+
+    it('rejects an empty query with INVALID_ARGUMENT', async () => {
+      await expect(searchTitles({ query: '' })).rejects.toMatchObject({ code: grpc.status.INVALID_ARGUMENT });
     });
   });
 });
