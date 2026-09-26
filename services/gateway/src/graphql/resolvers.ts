@@ -8,6 +8,8 @@ import type {
   CatalogServiceClient,
   CreateTitleRequest,
   PublishTitleRequest,
+  SearchTitlesRequest,
+  SearchTitlesResponse,
   Title as ProtoTitle,
 } from '../grpc/generated/catalog.js';
 import { ContentRating, MediaAssetStatus, TitleType } from '../grpc/generated/catalog.js';
@@ -186,6 +188,23 @@ export const resolvers = {
         return { titles: response.titles.map(titleToGraphQL), nextCursor: response.nextCursor ?? null };
       } catch (error) {
         throw toGraphQLError(error, context.logger, 'browse_titles_query_failed');
+      }
+    },
+
+    async searchTitles(
+      _parent: unknown,
+      args: { query: string; limit?: number },
+      context: GraphQLContext,
+    ): Promise<GraphQLTitle[]> {
+      try {
+        const response = await callUnary<SearchTitlesRequest, SearchTitlesResponse>(
+          context.catalogClient.searchTitles.bind(context.catalogClient),
+          { query: args.query, limit: args.limit },
+          correlationMetadata(context),
+        );
+        return response.titles.map(titleToGraphQL);
+      } catch (error) {
+        throw toGraphQLError(error, context.logger, 'search_titles_query_failed');
       }
     },
   },

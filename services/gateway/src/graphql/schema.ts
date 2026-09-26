@@ -96,6 +96,13 @@ export const typeDefs = /* GraphQL */ `
     docstring for why this isn't a strict Connection.
     """
     browseTitles(genre: String, type: TitleType, cursor: String, limit: Int): TitleConnection!
+    """
+    Full-text search over originalTitle/synopsis, ranked by relevance —
+    see CatalogService.SearchTitles' comment in /proto/catalog.proto.
+    Public, no pagination (matches the spec's target signature, plus an
+    optional limit).
+    """
+    searchTitles(query: String!, limit: Int): [Title!]!
   }
 
   type Mutation {
