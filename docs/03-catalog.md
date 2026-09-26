@@ -196,7 +196,7 @@ type Query {
 ## État d'avancement
 
 - [x] Schéma DB PostgreSQL — `Title` + `MediaAsset` (un par titre, V1 statique) + `Genre`/`TitleGenre` (`CreateTitle`/`GetTitleBySlug`/`AttachMediaAsset`/`PublishTitle` gRPC, `services/catalog/`) ; Season/Episode restent à faire, features séparées
-- [ ] Index GIN full-text search
+- [x] Index GIN full-text search — colonne `search_vector` générée (STORED), `SearchTitles` gRPC (`services/catalog/`)
 - [x] Resolvers GraphQL — `Query.title(slug)`/`browseTitles`/`Mutation.createTitle`/`attachMediaAsset`/`publishTitle` (`services/gateway/src/graphql/`) ; filtrage kids pas encore applicable (pas de profils actifs dans le contexte GraphQL pour l'instant)
 - [x] **Un titre peut réellement devenir regardable** (`docs/00-OVERVIEW.md`, objectif Phase 1 : "lecture d'un fichier vidéo statique unique, pas encore de transcodage") — `AttachMediaAsset` associe une URL statique, `PublishTitle` refuse tant qu'elle n'est pas `READY`
 - [x] **Pagination par curseur** — `BrowseTitles`/`Query.browseTitles`, filtrable par genre/type

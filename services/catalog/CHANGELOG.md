@@ -7,3 +7,4 @@
 - feat: `AttachMediaAsset`/`PublishTitle` (gRPC) — ferme le gap Phase 1 (docs/00-OVERVIEW.md) : un `Title` peut enfin devenir réellement regardable. `MediaAsset` statique (un par titre en V1, pas d'upload/transcodage réel) ; `PublishTitle` refuse (`FAILED_PRECONDITION`) sans asset `READY`
 - feat: `Genre` — `CreateTitle` accepte des noms de genre (triés/dédupliqués, max 10), upsertés par nom (`Genre`/`TitleGenre` many-to-many) ; `Title.genres` exposé sur toutes les lectures
 - feat: `BrowseTitles` (gRPC, public) — pagination par curseur `(created_at, id)`, filtres `genre`/`type`, ne renvoie jamais un titre non `PUBLISHED`
+- feat: `SearchTitles` (gRPC, public) — recherche full-text (`tsvector` généré + index GIN, classement `ts_rank`) sur `original_title`/`synopsis`
