@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '../../generated/prisma-client/index.js';
+import { KIDS_SAFE_RATINGS } from '../domain/schemas.js';
 import type {
   BrowseTitlesFilter,
   CreateTitleRecordInput,
@@ -67,6 +68,7 @@ export class PrismaTitleRepository implements TitleRepository {
         status: 'PUBLISHED',
         ...(filter.type ? { type: filter.type } : {}),
         ...(filter.genre ? { titleGenres: { some: { genre: { name: filter.genre } } } } : {}),
+        ...(filter.kidsSafeOnly ? { rating: { in: [...KIDS_SAFE_RATINGS] } } : {}),
         // Keyset pagination: strictly older than the cursor row, tiebroken
         // by id — matches the ORDER BY below exactly, which is what keeps
         // this correct even when several titles share a `createdAt`.
@@ -86,17 +88,21 @@ export class PrismaTitleRepository implements TitleRepository {
     return titles.map(toTitleRecord);
   }
 
-  async search(query: string, limit: number): Promise<TitleRecord[]> {
+  async search(query: string, limit: number, kidsSafeOnly?: boolean): Promise<TitleRecord[]> {
     // Two queries rather than one big join: `search_vector` is `Unsupported`
     // in the Prisma schema (see its comment there), so it can't appear in a
     // normal `findMany` filter/orderBy — only in raw SQL. This raw query
     // gets just the ranked ids; the normal `findMany` below reuses the
     // existing MediaAsset/genre include instead of duplicating that join by
     // hand in raw SQL.
+    const ratingFilter = kidsSafeOnly
+      ? Prisma.sql`AND rating::text = ANY(${[...KIDS_SAFE_RATINGS]})`
+      : Prisma.empty;
     const ranked = await this.prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       SELECT id FROM titles
       WHERE status = 'PUBLISHED'
         AND search_vector @@ plainto_tsquery('english', ${query})
+        ${ratingFilter}
       ORDER BY ts_rank(search_vector, plainto_tsquery('english', ${query})) DESC
       LIMIT ${limit}
     `);

@@ -36,6 +36,7 @@ export async function browseTitles(rawInput: unknown, titleRepository: TitleRepo
     type: input.type,
     cursor,
     limit: input.limit + 1,
+    kidsSafeOnly: input.kidsSafeOnly,
   });
 
   const hasNextPage = rows.length > input.limit;

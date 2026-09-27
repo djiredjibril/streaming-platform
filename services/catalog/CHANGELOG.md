@@ -8,3 +8,4 @@
 - feat: `Genre` — `CreateTitle` accepte des noms de genre (triés/dédupliqués, max 10), upsertés par nom (`Genre`/`TitleGenre` many-to-many) ; `Title.genres` exposé sur toutes les lectures
 - feat: `BrowseTitles` (gRPC, public) — pagination par curseur `(created_at, id)`, filtres `genre`/`type`, ne renvoie jamais un titre non `PUBLISHED`
 - feat: `SearchTitles` (gRPC, public) — recherche full-text (`tsvector` généré + index GIN, classement `ts_rank`) sur `original_title`/`synopsis`
+- feat: filtrage kids — `kids_safe_only` (booléen) sur `BrowseTitles`/`SearchTitles`, n'autorise que les ratings `G`/`PG` quand `true` ; la Gateway le résout depuis le profil actif, CatalogService fait confiance à l'appelant (même frontière que l'admin check de `CreateTitle`)

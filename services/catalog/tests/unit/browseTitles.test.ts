@@ -111,4 +111,24 @@ describe('browseTitles', () => {
     expect(result.titles).toHaveLength(20);
     expect(result.nextCursor).not.toBeNull();
   });
+
+  it('kidsSafeOnly excludes ratings outside G/PG', async () => {
+    await createPublishedTitle({ originalTitle: 'Kids Movie', rating: 'G' });
+    await createPublishedTitle({ originalTitle: 'Also Fine', rating: 'PG' });
+    await createPublishedTitle({ originalTitle: 'Teen Movie', rating: 'PG_13' });
+    await createPublishedTitle({ originalTitle: 'Adult Movie', rating: 'R' });
+    await createPublishedTitle({ originalTitle: 'Unrated Movie', rating: 'UNRATED' });
+
+    const result = await browseTitles({ kidsSafeOnly: true }, titleRepository);
+
+    expect(result.titles.map((t) => t.originalTitle).sort()).toEqual(['Also Fine', 'Kids Movie']);
+  });
+
+  it('kidsSafeOnly defaults to false — the full catalog is returned when omitted', async () => {
+    await createPublishedTitle({ originalTitle: 'Kids Movie', rating: 'G' });
+    await createPublishedTitle({ originalTitle: 'Adult Movie', rating: 'R' });
+
+    const result = await browseTitles({}, titleRepository);
+    expect(result.titles).toHaveLength(2);
+  });
 });

@@ -13,5 +13,5 @@ export async function searchTitles(rawInput: unknown, titleRepository: TitleRepo
   if (!parsed.success) {
     throw new InvalidSearchTitlesInputError(parsed.error.issues[0]?.message ?? 'Invalid input');
   }
-  return titleRepository.search(parsed.data.query, parsed.data.limit);
+  return titleRepository.search(parsed.data.query, parsed.data.limit, parsed.data.kidsSafeOnly);
 }

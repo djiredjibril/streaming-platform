@@ -1,3 +1,4 @@
+import { KIDS_SAFE_RATINGS } from '../../../src/domain/schemas.js';
 import type {
   BrowseTitlesFilter,
   CreateTitleRecordInput,
@@ -62,6 +63,9 @@ export class InMemoryTitleRepository implements TitleRepository {
     if (filter.genre) {
       titles = titles.filter((t) => t.genres.includes(filter.genre!));
     }
+    if (filter.kidsSafeOnly) {
+      titles = titles.filter((t) => (KIDS_SAFE_RATINGS as readonly string[]).includes(t.rating));
+    }
     titles.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : -1));
     if (filter.cursor) {
       const { createdAt, id } = filter.cursor;
@@ -73,9 +77,12 @@ export class InMemoryTitleRepository implements TitleRepository {
   }
 
   /** Simplified stand-in for the real ts_rank-ordered Postgres search (infra/prismaTitleRepository.ts) — plain case-insensitive substring match on originalTitle/synopsis, title matches sorted before synopsis-only matches. Real ranking behavior is covered at the integration level, against real Postgres full-text search. */
-  async search(query: string, limit: number): Promise<TitleRecord[]> {
+  async search(query: string, limit: number, kidsSafeOnly?: boolean): Promise<TitleRecord[]> {
     const needle = query.toLowerCase();
-    const published = [...this.titlesById.values()].filter((t) => t.status === 'PUBLISHED');
+    let published = [...this.titlesById.values()].filter((t) => t.status === 'PUBLISHED');
+    if (kidsSafeOnly) {
+      published = published.filter((t) => (KIDS_SAFE_RATINGS as readonly string[]).includes(t.rating));
+    }
     const titleMatches = published.filter((t) => t.originalTitle.toLowerCase().includes(needle));
     const synopsisOnlyMatches = published.filter(
       (t) => !t.originalTitle.toLowerCase().includes(needle) && t.synopsis.toLowerCase().includes(needle),
